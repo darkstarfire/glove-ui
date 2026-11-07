@@ -232,6 +232,17 @@ impl Rect {
 }
 
 /// Resultado de `Ui::hit`.
+/// O que aconteceu na faixa de abas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabAction {
+    Select(usize),
+    Close(usize),
+    New,
+}
+
+/// Altura da faixa de abas.
+pub const TAB_STRIP_H: f32 = 24.0;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Response {
     pub hover: bool,
@@ -396,6 +407,8 @@ pub struct Memory {
     pub(crate) open_windows: Vec<(u32, crate::platform::WindowOptions)>,
     /// O app pediu para redesenhar as outras janelas também.
     pub(crate) redraw_all: bool,
+    /// Descritores novos para observar (ex.: o shell de uma aba nova).
+    pub(crate) watch_req: Vec<std::os::fd::RawFd>,
     /// Seta de rolagem apertada: (id, próxima repetição).
     scroll_repeat: Option<(Id, std::time::Instant)>,
     /// Superfícies de rascunho reaproveitadas (recorte de áreas roláveis).
@@ -694,6 +707,88 @@ impl<'a> Ui<'a> {
     /// Número da janela que está sendo desenhada (0 = a primeira).
     pub fn window_id(&self) -> u32 {
         self.mem.window_id
+    }
+
+    /// Observa mais um descritor: quando tiver dados, o kit chama
+    /// `App::fd_ready_on(fd)` e redesenha. O app garante que ele vive enquanto observado
+    /// (devolva `false` em `fd_ready_on` para parar).
+    pub fn watch_fd(&mut self, fd: std::os::fd::RawFd) {
+        self.mem.watch_req.push(fd);
+    }
+
+    /// Faixa de abas (como a dos navegadores da época), na largura de `r`: cada
+    /// aba com o título e o × de fechar, mais o "+" de abrir outra no fim.
+    pub fn tab_strip(&mut self, r: Rect, titles: &[String], active: usize) -> Option<TabAction> {
+        // Ids num escopo próprio: a faixa não muda os dos controles da janela (o foco fica).
+        let mut out = None;
+        self.push_id("glove-faixa-de-abas", |ui| out = ui.tab_strip_inner(r, titles, active));
+        out
+    }
+
+    fn tab_strip_inner(&mut self, r: Rect, titles: &[String], active: usize) -> Option<TabAction> {
+        let mut out = None;
+        self.c.fill_rect(r.x, r.y, r.w, r.h, &vgrad(r.y, r.y + r.h, &[(0.0, rgba(176, 176, 180, 255)), (1.0, rgba(196, 196, 200, 255))]));
+        self.c.hline(r.x, r.y, r.w, rgba(120, 120, 126, 255));
+        self.c.hline(r.x, r.y + r.h - 1.0, r.w, rgba(120, 120, 126, 255));
+        let plus_w = 26.0;
+        let n = titles.len().max(1) as f32;
+        let tw = ((r.w - plus_w - 8.0) / n).min(220.0);
+        for (i, t) in titles.iter().enumerate() {
+            let x = r.x + 4.0 + i as f32 * tw;
+            let tab = Rect::new(x, r.y + 3.0, tw - 2.0, r.h - 3.0);
+            let id = self.next_id();
+            let (hover, _, clicked) = self.interact(id, tab);
+            let on = i == active;
+            let (a, b) = if on { (rgba(246, 246, 248, 255), rgba(226, 226, 230, 255)) } else if hover { (rgba(214, 214, 218, 255), rgba(200, 200, 204, 255)) } else { (rgba(200, 200, 204, 255), rgba(186, 186, 190, 255)) };
+            self.c.fill(rrect4(tab.x, tab.y, tab.w, tab.h, [5.0, 5.0, 0.0, 0.0]), &vgrad(tab.y, tab.y + tab.h, &[(0.0, a), (1.0, b)]));
+            self.c.stroke(rrect4(tab.x + 0.5, tab.y + 0.5, tab.w - 1.0, tab.h, [5.0, 5.0, 0.0, 0.0]), &solid(rgba(120, 120, 126, 255)), 1.0);
+            if on {
+                self.c.fill_rect(tab.x + 1.0, r.y + r.h - 1.0, tab.w - 2.0, 1.0, &solid(b));
+            }
+            // × de fechar, à esquerda (só aparece com mais de uma aba).
+            let close = Rect::new(tab.x + 6.0, tab.y + (tab.h - 12.0) / 2.0, 12.0, 12.0);
+            let mut on_close = false;
+            if titles.len() > 1 {
+                let cid = self.next_id();
+                let (ch, _, cc) = self.interact(cid, close);
+                on_close = cc;
+                if ch {
+                    self.c.fill(circle(close.x + 6.0, close.y + 6.0, 6.0), &solid(rgba(0, 0, 0, 40)));
+                }
+                let ink = solid(rgba(90, 90, 96, 255));
+                for (x0, y0, x1, y1) in [(3.5f32, 3.5f32, 8.5f32, 8.5f32), (8.5, 3.5, 3.5, 8.5)] {
+                    let mut pb = glove_paint::tiny_skia::PathBuilder::new();
+                    pb.move_to(close.x + x0, close.y + y0);
+                    pb.line_to(close.x + x1, close.y + y1);
+                    self.c.stroke(pb.finish(), &ink, 1.2);
+                }
+            }
+            let label = self.fonts.ellipsize(t, 11.5, on, tab.w - 44.0);
+            let lw = self.fonts.measure(&label, 11.5, on);
+            self.fonts.draw(self.c, &label, tab.x + (tab.w - lw) / 2.0, tab.y + tab.h / 2.0 + 4.0, 11.5, on, ink());
+            if on_close {
+                out = Some(TabAction::Close(i));
+            } else if clicked && out.is_none() {
+                out = Some(TabAction::Select(i));
+            }
+        }
+        let px = r.x + 4.0 + titles.len() as f32 * tw + 4.0;
+        let plus = Rect::new(px, r.y + 4.0, plus_w - 6.0, r.h - 7.0);
+        let id = self.next_id();
+        let (hover, _, clicked) = self.interact(id, plus);
+        if hover {
+            self.c.fill(rrect(plus.x, plus.y, plus.w, plus.h, 4.0), &solid(rgba(0, 0, 0, 30)));
+        }
+        let (cx, cy) = (plus.x + plus.w / 2.0, plus.y + plus.h / 2.0);
+        self.c.fill_rect(cx - 5.0, cy - 0.75, 10.0, 1.5, &solid(rgba(70, 70, 76, 255)));
+        self.c.fill_rect(cx - 0.75, cy - 5.0, 1.5, 10.0, &solid(rgba(70, 70, 76, 255)));
+        if clicked {
+            out = Some(TabAction::New);
+        }
+        if out.is_some() {
+            self.redraw = true;
+        }
+        out
     }
 
     /// Redesenha também as outras janelas do app depois deste quadro (quando o que

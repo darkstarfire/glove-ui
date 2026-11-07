@@ -26,5 +26,5 @@ pub use glove_config::{idioma, tr, tr_dyn, virgula};
 pub use platform::{app_icon, local_time, run, theme_from_config, use_own_frame, App, WindowOptions};
 pub use menu::{Menu, MenuItem};
 pub use filebrowser::{Choice, FileBrowser};
-pub use ui::{disclosure_triangle, AlertKind, Column, Rect, TableResponse, TableRow, TableState, TableStyle, Ticks, Ui, SCROLLBAR_W, SEARCH_H, SEGMENT_H, SEGMENT_W, TABLE_HEADER_H};
+pub use ui::{disclosure_triangle, AlertKind, Column, Rect, TableResponse, TableRow, TableState, TableStyle, Ticks, Ui, SCROLLBAR_W, SEARCH_H, SEGMENT_H, SEGMENT_W, TABLE_HEADER_H, TabAction, TAB_STRIP_H};
 pub use glove_paint::icons::Glyph;

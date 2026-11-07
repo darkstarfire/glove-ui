@@ -743,3 +743,6 @@ msgstr "Move window to next desktop"
 
 msgid "Mesa {}"
 msgstr "Desktop {}"
+
+msgid "Tela cheia"
+msgstr "Full screen"

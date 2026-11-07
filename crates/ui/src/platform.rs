@@ -87,6 +87,12 @@ pub trait App: 'static {
     fn fd_ready(&mut self) -> bool {
         false
     }
+    /// Um descritor observado (o de `watch_fd` ou um de `ui.watch_fd`) tem dados.
+    /// Padrão: `fd_ready`. Devolva `false` para parar de observar este.
+    fn fd_ready_on(&mut self, fd: std::os::fd::RawFd) -> bool {
+        let _ = fd;
+        self.fd_ready()
+    }
     /// Menus do app para a barra de menu global (enviados só quando mudam).
     fn menus(&self) -> Vec<crate::menu::Menu> {
         Vec::new()
@@ -441,8 +447,8 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
         let src = Generic::new(unsafe { smithay_client_toolkit::reexports::calloop::generic::FdWrapper::new(fd) }, Interest::READ, Mode::Level);
         event_loop
             .handle()
-            .insert_source(src, |_, _, st: &mut Runner<A>| {
-                let keep = st.app.fd_ready();
+            .insert_source(src, move |_, _, st: &mut Runner<A>| {
+                let keep = st.app.fd_ready_on(fd);
                 st.redraw_all();
                 Ok(if keep { PostAction::Continue } else { PostAction::Remove })
             })
@@ -801,6 +807,15 @@ impl<A: App> Runner<A> {
     /// Devolve verdadeiro se o tamanho mudou na hora (o quadro precisa ser refeito).
     fn after_frame(&mut self) -> bool {
         let mut resized = false;
+        for fd in std::mem::take(&mut self.w.mem.watch_req) {
+            // Segurança: o app garante que o descritor vive enquanto observado.
+            let src = Generic::new(unsafe { smithay_client_toolkit::reexports::calloop::generic::FdWrapper::new(fd) }, Interest::READ, Mode::Level);
+            let _ = self.loop_handle.insert_source(src, move |_, _, st: &mut Runner<A>| {
+                let keep = st.app.fd_ready_on(fd);
+                st.redraw_all();
+                Ok(if keep { PostAction::Continue } else { PostAction::Remove })
+            });
+        }
         if std::mem::take(&mut self.w.mem.redraw_all) && !self.others.is_empty() {
             let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(0)), |_, _, st: &mut Runner<A>| {
                 st.redraw_all();
