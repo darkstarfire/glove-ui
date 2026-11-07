@@ -722,3 +722,6 @@ msgstr "Orange"
 msgid "Lista"
 msgstr "List"
 
+msgid "OK"
+msgstr "OK"
+

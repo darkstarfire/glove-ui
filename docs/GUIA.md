@@ -19,7 +19,7 @@ Ou, num projeto seu, acrescente a dependência:
 
 ```toml
 [dependencies]
-glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.0" }
+glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.1" }
 ```
 
 Precisa do Rust 1.85 ou mais novo e das bibliotecas de desenvolvimento do `xkbcommon`

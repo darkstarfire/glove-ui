@@ -21,7 +21,7 @@ pub use text::{Align, TextBuffer};
 pub use glove_paint as paint;
 /// Configurações do Glove (tema, escala, teclado…) que todo app segue.
 pub use glove_config as config;
-/// Traduções: `tr!("texto")`, `tr!("{} itens", n)`; `idioma()`, `virgula()`.
+/// Traduções (a macro `tr!`), o idioma em uso e o separador decimal.
 pub use glove_config::{idioma, tr, tr_dyn, virgula};
 pub use platform::{app_icon, local_time, run, theme_from_config, use_own_frame, App, WindowOptions};
 pub use menu::{Menu, MenuItem};
