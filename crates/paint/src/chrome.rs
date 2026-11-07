@@ -1368,6 +1368,8 @@ pub enum Extra {
     Clock { text: String, analog: Option<(u8, u8)> },
     /// Troca rápida de usuário (o último à direita): o nome de quem está usando.
     User { name: String },
+    /// Central de avisos: quantos não lidos e "não perturbe".
+    Notifications { unread: u32, quiet: bool },
 }
 
 /// Largura do extra na barra.
@@ -1382,6 +1384,8 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
         Extra::Clock { analog: Some(_), .. } => 28.0,
         Extra::Clock { text, .. } => fonts.measure(text, MENUBAR_PX, false) + 16.0,
         Extra::User { name } => fonts.measure(name, MENUBAR_PX, true) + 16.0,
+        Extra::Notifications { unread: 0, .. } => 28.0,
+        Extra::Notifications { unread, .. } => 30.0 + fonts.measure(&(*unread).min(99).to_string(), 9.0, true),
     }
 }
 
@@ -1489,6 +1493,27 @@ fn wifi_glyph(c: &mut Canvas, cx: f32, base: f32, on: bool, bars: u8, color: Col
     c.fill(circle(cx, base - 1.0, 1.6), &solid(if on && bars > 0 { color } else { dim }));
 }
 
+/// Balão de conversa (central de avisos); "não perturbe" leva um risco.
+fn notif_glyph(c: &mut Canvas, x: f32, y: f32, quiet: bool, color: Color) {
+    c.stroke(rrect(x + 0.6, y + 0.6, 14.0, 10.0, 4.0), &solid(color), 1.2);
+    // A pontinha embaixo à esquerda.
+    let mut pb = tiny_skia::PathBuilder::new();
+    pb.move_to(x + 3.5, y + 10.0);
+    pb.line_to(x + 2.5, y + 14.5);
+    pb.line_to(x + 7.5, y + 10.4);
+    pb.close();
+    c.fill(pb.finish(), &solid(color));
+    for k in 0..3 {
+        c.fill(circle(x + 4.4 + k as f32 * 3.2, y + 5.6, 0.95), &solid(color));
+    }
+    if quiet {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(x - 0.5, y + 13.5);
+        pb.line_to(x + 15.5, y - 1.0);
+        c.stroke(pb.finish(), &solid(color), 1.4);
+    }
+}
+
 fn display_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
     c.stroke(rrect(x + 0.5, y + 0.5, 16.0, 11.0, 1.5), &solid(color), 1.2);
     c.fill_rect(x + 2.5, y + 2.5, 12.0, 7.0, &solid(with_alpha(color, color.alpha() * 0.35)));
@@ -1534,6 +1559,17 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { analog: Some((h, m)), .. } => clock_glyph(c, a + 14.0, 11.0, *h, *m, col),
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
+            Extra::Notifications { unread, quiet } => {
+                notif_glyph(c, a + 7.0, 4.0, *quiet, col);
+                if *unread > 0 {
+                    // A contagem numa pastilha vermelha ao lado.
+                    let t = (*unread).min(99).to_string();
+                    let tw = fonts.measure(&t, 9.0, true);
+                    let (bx, bw) = (a + 21.0, tw + 7.0);
+                    c.fill(rrect(bx, 5.0, bw, 12.0, 6.0), &vgrad(5.0, 17.0, &[(0.0, rgba(240, 90, 80, 255)), (1.0, rgba(200, 30, 25, 255))]));
+                    fonts.draw(c, &t, bx + 3.5, 14.5, 9.0, true, Color::WHITE);
+                }
+            }
         }
         ranges[i] = (a, b);
         x = a;
