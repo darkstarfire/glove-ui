@@ -1,0 +1,658 @@
+# Glove UI — tradução para o inglês.
+# A chave (msgid) é o texto em português que está no código.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+msgid "(não responde)"
+msgstr "(not responding)"
+
+msgid "ABR"
+msgstr "APR"
+
+msgid "AGO"
+msgstr "AUG"
+
+msgid "Abrir"
+msgstr "Open"
+
+msgid "Abrir Preferências"
+msgstr "Open Preferences"
+
+msgid "Abrir Terminal"
+msgstr "Open Terminal"
+
+msgid "Abrir com"
+msgstr "Open With"
+
+msgid "Acesso às Chaves"
+msgstr "Passwords"
+
+msgid "Adicionar…"
+msgstr "Add…"
+
+msgid "Agenda"
+msgstr "Calendar"
+
+msgid "Ajuda"
+msgstr "Help"
+
+msgid "Alemão"
+msgstr "German"
+
+msgid "Alterações não salvas serão perdidas."
+msgstr "Unsaved changes will be lost."
+
+msgid "Amarelo"
+msgstr "Yellow"
+
+msgid "Aparência"
+msgstr "Appearance"
+
+msgid "Aplicativos"
+msgstr "Applications"
+
+msgid "Arquivo"
+msgstr "File"
+
+msgid "Arquivos"
+msgstr "Files"
+
+msgid "Aurora"
+msgstr "Aurora"
+
+msgid "Azul"
+msgstr "Blue"
+
+msgid "Bloquear a tela"
+msgstr "Lock the screen"
+
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+msgid "Bolha"
+msgstr "Bubble"
+
+msgid "Busca"
+msgstr "Search"
+
+msgid "Busca Rápida"
+msgstr "Quick Search"
+
+msgid "Buscando…"
+msgstr "Loading…"
+
+msgid "Buscar família"
+msgstr "Search family"
+
+msgid "Calculadora"
+msgstr "Calculator"
+
+msgid "Calendário"
+msgstr "Calendar"
+
+msgid "Cancelar"
+msgstr "Cancel"
+
+msgid "Captura"
+msgstr "Screenshot"
+
+msgid "Captura de tela"
+msgstr "Screenshot"
+
+msgid "Captura de uma área"
+msgstr "Screenshot of an area"
+
+msgid "Caracteres"
+msgstr "Characters"
+
+msgid "Casa"
+msgstr "Home"
+
+msgid "Celular"
+msgstr "Mobile"
+
+msgid "Cinza"
+msgstr "Gray"
+
+msgid "Claro"
+msgstr "Light"
+
+msgid "Clima"
+msgstr "Weather"
+
+msgid "Contas"
+msgstr "Accounts"
+
+msgid "Contatos"
+msgstr "Contacts"
+
+msgid "Cores"
+msgstr "Colors"
+
+msgid "Correio"
+msgstr "Mail"
+
+msgid "Código"
+msgstr "Code"
+
+msgid "Cópias:"
+msgstr "Copies:"
+
+msgid "DEZ"
+msgstr "DEC"
+
+msgid "Data e Hora"
+msgstr "Date & Time"
+
+msgid "De:"
+msgstr "From:"
+
+msgid "Desbloquear"
+msgstr "Unlock"
+
+msgid "Dicionário"
+msgstr "Dictionary"
+
+msgid "Digite a cidade e Enter"
+msgstr "Type a city and press Enter"
+
+msgid "Digite sua senha para desbloquear."
+msgstr "Enter your password to unlock."
+
+msgid "Digite um nome."
+msgstr "Type a name."
+
+msgid "Disco"
+msgstr "Disk"
+
+msgid "Discos"
+msgstr "Disks"
+
+msgid "Dock"
+msgstr "Dock"
+
+msgid "Documento"
+msgstr "Document"
+
+msgid "Documentos"
+msgstr "Documents"
+
+msgid "Dom"
+msgstr "Sun"
+
+msgid "Dourado"
+msgstr "Gold"
+
+msgid "Downloads"
+msgstr "Downloads"
+
+msgid "Editar"
+msgstr "Edit"
+
+msgid "Editor de Texto"
+msgstr "Text Editor"
+
+msgid "Ejetar"
+msgstr "Eject"
+
+msgid "Escolher"
+msgstr "Choose"
+
+msgid "Escolher uma pasta"
+msgstr "Choose a Folder"
+
+msgid "Escreva aqui…"
+msgstr "Write here…"
+
+msgid "Espanhol (América Latina)"
+msgstr "Spanish (Latin America)"
+
+msgid "Espanhol (Espanha)"
+msgstr "Spanish (Spain)"
+
+msgid "Espaço"
+msgstr "Space"
+
+msgid "Esta tela está bloqueada."
+msgstr "This screen is locked."
+
+msgid "Este app não abre esse tipo de arquivo."
+msgstr "This app can’t open this kind of file."
+
+msgid "Este disco não está montado."
+msgstr "This disk isn’t mounted."
+
+msgid "Este disco não guarda rótulos ({})"
+msgstr "This disk doesn’t store labels ({})"
+
+msgid "Ethernet"
+msgstr "Ethernet"
+
+msgid "Exposé: janelas do app"
+msgstr "Exposé: application windows"
+
+msgid "Exposé: mostrar a mesa"
+msgstr "Exposé: show the desktop"
+
+msgid "Exposé: todas as janelas"
+msgstr "Exposé: all windows"
+
+msgid "FEV"
+msgstr "FEB"
+
+msgid "Fala"
+msgstr "Speech"
+
+msgid "Fechar janela"
+msgstr "Close window"
+
+msgid "Fontes"
+msgstr "Fonts"
+
+msgid "Forçar Encerrar"
+msgstr "Force Quit"
+
+msgid "Forçar Encerrar Aplicativos"
+msgstr "Force Quit Applications"
+
+msgid "Francês"
+msgstr "French"
+
+msgid "Gota"
+msgstr "Drop"
+
+msgid "Grafite"
+msgstr "Graphite"
+
+msgid "Imagem"
+msgstr "Picture"
+
+msgid "Imagens"
+msgstr "Pictures"
+
+msgid "Impressora:"
+msgstr "Printer:"
+
+msgid "Impressão"
+msgstr "Printing"
+
+msgid "Imprimir"
+msgstr "Print"
+
+msgid "Informações do Sistema"
+msgstr "System Information"
+
+msgid "Inglês (EUA)"
+msgstr "English (US)"
+
+msgid "Inglês (EUA, internacional)"
+msgstr "English (US, international)"
+
+msgid "Inglês (Reino Unido)"
+msgstr "English (UK)"
+
+msgid "Internacional"
+msgstr "International"
+
+msgid "Inverter as cores"
+msgstr "Invert colors"
+
+msgid "Início"
+msgstr "Home"
+
+msgid "Italiano"
+msgstr "Italian"
+
+msgid "JAN"
+msgstr "JAN"
+
+msgid "JUL"
+msgstr "JUL"
+
+msgid "JUN"
+msgstr "JUN"
+
+msgid "Janela"
+msgstr "Window"
+
+msgid "Laranja"
+msgstr "Orange"
+
+msgid "Lembrete"
+msgstr "Note"
+
+msgid "Lembretes"
+msgstr "Notes"
+
+msgid "Listras"
+msgstr "Stripes"
+
+msgid "Livro de Fontes"
+msgstr "Font Viewer"
+
+msgid "Lixo"
+msgstr "Trash"
+
+msgid "MAI"
+msgstr "MAY"
+
+msgid "MAR"
+msgstr "MAR"
+
+msgid "Memória"
+msgstr "Memory"
+
+msgid "Mesa"
+msgstr "Desktop"
+
+msgid "Metal"
+msgstr "Metal"
+
+msgid "Minimizar janela"
+msgstr "Minimize window"
+
+msgid "Monitor"
+msgstr "System Monitor"
+
+msgid "Monitores"
+msgstr "Displays"
+
+msgid "Monitor|tela"
+msgstr "Display"
+
+msgid "Mostrar Todos"
+msgstr "Show All"
+
+msgid "Mouse"
+msgstr "Mouse"
+
+msgid "Máx {}°   Mín {}°"
+msgstr "High {}°   Low {}°"
+
+msgid "Música"
+msgstr "Music"
+
+msgid "NOV"
+msgstr "NOV"
+
+msgid "Navegador"
+msgstr "Browser"
+
+msgid "Nenhum resultado"
+msgstr "No results"
+
+msgid "Nenhuma impressora"
+msgstr "No printer"
+
+msgid "Nenhuma impressora configurada."
+msgstr "No printer set up."
+
+msgid "Nova Pasta"
+msgstr "New Folder"
+
+msgid "Novo"
+msgstr "New"
+
+msgid "Não foi possível criar a pasta: {}"
+msgstr "Couldn’t create the folder: {}"
+
+msgid "Não foi possível ejetar “{}”: {}"
+msgstr "Couldn’t eject “{}”: {}"
+
+msgid "Não foi possível salvar: {}"
+msgstr "Couldn’t save: {}"
+
+msgid "Não foi possível usar o lp (CUPS): {}"
+msgstr "Couldn’t use lp (CUPS): {}"
+
+msgid "Não salvar"
+msgstr "Don’t Save"
+
+msgid "O disco “{}” está em uso. Feche os arquivos e os apps que usam o disco e tente de novo."
+msgstr "The disk “{}” is in use. Close the files and apps using it and try again."
+
+msgid "O nome não pode ter “/”."
+msgstr "The name can’t contain “/”."
+
+msgid "O servidor está em uso. Feche os arquivos abertos dele e tente de novo."
+msgstr "The server is in use. Close its open files and try again."
+
+msgid "O sistema pediu permissão de administrador e ela não foi dada."
+msgstr "The system asked for administrator permission and it wasn’t given."
+
+msgid "OUT"
+msgstr "OCT"
+
+msgid "Ocultar o app"
+msgstr "Hide the app"
+
+msgid "Ocultar os outros apps"
+msgstr "Hide other apps"
+
+msgid "Ondas"
+msgstr "Waves"
+
+msgid "Painel de Widgets"
+msgstr "Widget Dashboard"
+
+msgid "Pasta"
+msgstr "Folder"
+
+msgid "Português (Brasil, ABNT2)"
+msgstr "Portuguese (Brazil, ABNT2)"
+
+msgid "Português (Portugal)"
+msgstr "Portuguese (Portugal)"
+
+msgid "Prata"
+msgstr "Silver"
+
+msgid "Preferências"
+msgstr "Preferences"
+
+msgid "Preferências…"
+msgstr "Preferences…"
+
+msgid "Pressione as teclas…"
+msgstr "Press the keys…"
+
+msgid "Processador"
+msgstr "Processor"
+
+msgid "Procurar palavra"
+msgstr "Look up a word"
+
+msgid "Pré-visualizar"
+msgstr "Preview"
+
+msgid "Próximo layout de teclado"
+msgstr "Next keyboard layout"
+
+msgid "Páginas:"
+msgstr "Pages:"
+
+msgid "Qua"
+msgstr "Wed"
+
+msgid "Qui"
+msgstr "Thu"
+
+msgid "Rede"
+msgstr "Network"
+
+msgid "Registros"
+msgstr "Logs"
+
+msgid "Relógio"
+msgstr "Clock"
+
+msgid "Roxo"
+msgstr "Purple"
+
+msgid "SET"
+msgstr "SEP"
+
+msgid "Sair do Glove"
+msgstr "Quit Glove"
+
+msgid "Salvar"
+msgstr "Save"
+
+msgid "Salvar PDF…"
+msgstr "Save PDF…"
+
+msgid "Salvar como:"
+msgstr "Save As:"
+
+msgid "Se um aplicativo não responder por algum tempo, selecione o nome dele e clique em Forçar Encerrar."
+msgstr "If an application doesn’t respond for a while, select its name and click Force Quit."
+
+msgid "Seg"
+msgstr "Mon"
+
+msgid "Segurança"
+msgstr "Security"
+
+msgid "Sem conexão"
+msgstr "No connection"
+
+msgid "Senha incorreta."
+msgstr "Wrong password."
+
+msgid "Servidor"
+msgstr "Server"
+
+msgid "Sex"
+msgstr "Fri"
+
+msgid "Sino"
+msgstr "Bell"
+
+msgid "Sobre o Glove"
+msgstr "About Glove"
+
+msgid "Som"
+msgstr "Sound"
+
+msgid "Sopro"
+msgstr "Breeze"
+
+msgid "Sáb"
+msgstr "Sat"
+
+msgid "Teclado"
+msgstr "Keyboard"
+
+msgid "Ter"
+msgstr "Tue"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Todas"
+msgstr "All"
+
+msgid "Toque"
+msgstr "Tap"
+
+msgid "Trackpad"
+msgstr "Trackpad"
+
+msgid "Trocar de app"
+msgstr "Switch apps"
+
+msgid "Utilitário de Rede"
+msgstr "Network Tools"
+
+msgid "Verde"
+msgstr "Green"
+
+msgid "Vermelho"
+msgstr "Red"
+
+msgid "Vidro"
+msgstr "Glass"
+
+msgid "Visualizador"
+msgstr "Viewer"
+
+msgid "Vídeo"
+msgstr "Video"
+
+msgid "Xadrez"
+msgstr "Chess"
+
+msgid "Zoom da janela"
+msgstr "Zoom window"
+
+msgid "Zoom: afastar"
+msgstr "Zoom: out"
+
+msgid "Zoom: aproximar"
+msgstr "Zoom: in"
+
+msgid "Zoom: ligar e desligar"
+msgstr "Zoom: turn on and off"
+
+msgid "abr"
+msgstr "Apr"
+
+msgid "ago"
+msgstr "Aug"
+
+msgid "até:"
+msgstr "to:"
+
+msgid "caminho inválido"
+msgstr "invalid path"
+
+msgid "dez"
+msgstr "Dec"
+
+msgid "fev"
+msgstr "Feb"
+
+msgid "jan"
+msgstr "Jan"
+
+msgid "jul"
+msgstr "Jul"
+
+msgid "jun"
+msgstr "Jun"
+
+msgid "mai"
+msgstr "May"
+
+msgid "mar"
+msgstr "Mar"
+
+msgid "nov"
+msgstr "Nov"
+
+msgid "o NetworkManager recusou"
+msgstr "NetworkManager refused"
+
+msgid "out"
+msgstr "Oct"
+
+msgid "pasta sem título"
+msgstr "untitled folder"
+
+msgid "set"
+msgstr "Sep"
+
+msgid "{0} {1} "
+msgstr "{1} {0} "
+
+msgid "{} em {}"
+msgstr "{} on {}"
+
+msgid "{} itens"
+msgstr "{} items"
+
+msgid "Áudio"
+msgstr "Audio"
+
