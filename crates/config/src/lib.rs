@@ -478,11 +478,13 @@ pub struct Touchpad {
     pub two_finger_right_click: bool,
     /// Tocar duas vezes e arrastar.
     pub tap_drag: bool,
+    /// Gestos com três e quatro dedos (Exposé, mesas virtuais, Todos os Apps).
+    pub gestures: bool,
 }
 
 impl Default for Touchpad {
     fn default() -> Self {
-        Self { tap_to_click: true, natural_scroll: true, speed: 0.0, disable_while_typing: true, two_finger_right_click: true, tap_drag: true }
+        Self { tap_to_click: true, natural_scroll: true, speed: 0.0, disable_while_typing: true, two_finger_right_click: true, tap_drag: true, gestures: true }
     }
 }
 
