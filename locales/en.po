@@ -752,3 +752,12 @@ msgstr "Backups"
 
 msgid "Central de Apps"
 msgstr "App Center"
+
+msgid "Gravador"
+msgstr "Recorder"
+
+msgid "Fotos"
+msgstr "Photos"
+
+msgid "Mensagens"
+msgstr "Messages"

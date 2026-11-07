@@ -1027,6 +1027,11 @@ pub fn theme_entries() -> Vec<(Icon, &'static str, &'static [&'static str])> {
         (Icon::Viewer, "apps", &["image-viewer", "org.gnome.eog", "org.gnome.Loupe", "eog", "glove-view"]),
         (Icon::DiskUtility, "apps", &["gnome-disks", "org.gnome.DiskUtility", "glove-disks"]),
         (Icon::Archiver, "apps", &["file-roller", "org.gnome.FileRoller", "glove-arquivo"]),
+        (Icon::Backup, "apps", &["deja-dup", "org.gnome.DejaDup", "glove-copias"]),
+        (Icon::AppCenter, "apps", &["system-software-install", "org.gnome.Software", "gnome-software", "glove-central"]),
+        (Icon::Photos, "apps", &["shotwell", "org.gnome.Shotwell", "gnome-photos", "org.gnome.Photos", "glove-fotos"]),
+        (Icon::Recorder, "apps", &["audio-input-microphone", "org.gnome.SoundRecorder", "glove-gravador"]),
+        (Icon::Messages, "apps", &["internet-chat", "org.gnome.Polari", "hexchat", "glove-mensagens"]),
         (Icon::Window, "apps", &["application-default-icon", "application-x-executable"]),
         // Lugares
         (Icon::Folder, "places", &["folder", "inode-directory", "folder-remote"]),

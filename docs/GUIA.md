@@ -19,7 +19,7 @@ Ou, num projeto seu, acrescente a dependência:
 
 ```toml
 [dependencies]
-glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.3" }
+glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.4" }
 ```
 
 Precisa do Rust 1.85 ou mais novo e das bibliotecas de desenvolvimento do `xkbcommon`
@@ -94,6 +94,16 @@ Para fechar a janela pelo código: `ui.close = true`.
 | `progress(Some(0.5), largura)`, `spinner(tamanho)` | Andamento |
 | `icon(…)`, `icon_tile(…)` | Ícones no estilo do Glove (`glove_ui::paint::icons::Icon`) |
 | `alert(tipo, título, texto, &[botões]) -> Option<usize>` | Alerta em folha; o último botão é o padrão e "Cancelar" responde ao Esc |
+| `tab_strip(r, &títulos, ativa) -> Option<TabAction>` | Faixa de abas com × e +; devolve `Select`, `Close` ou `New` (altura `TAB_STRIP_H`) |
+
+## Várias janelas e descritores
+
+- `ui.open_window(id, opções)` abre outra janela do mesmo app; `ui.window_id()` diz qual está
+  sendo desenhada e `App::window_closed(id)` avisa quando uma fecha.
+- `ui.redraw_all_windows()` redesenha as outras janelas depois deste quadro (ex.: uma prévia que
+  acompanha a seleção da janela principal).
+- `App::watch_fd` observa um descritor desde o começo; `ui.watch_fd(fd)` acrescenta outros depois
+  (ex.: o shell de uma aba nova). Quando um tem dados, o kit chama `App::fd_ready_on(fd)`.
 
 ## Menus na barra do Glove
 

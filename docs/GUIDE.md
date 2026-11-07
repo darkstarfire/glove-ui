@@ -19,7 +19,7 @@ Or add the dependency to your own project:
 
 ```toml
 [dependencies]
-glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.3" }
+glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.4" }
 ```
 
 You need Rust 1.85 or newer and the `xkbcommon` development files (`libxkbcommon-dev` on
@@ -93,6 +93,16 @@ To close the window from code: `ui.close = true`.
 | `progress(Some(0.5), width)`, `spinner(size)` | Progress |
 | `icon(…)`, `icon_tile(…)` | Glove-style icons (`glove_ui::paint::icons::Icon`) |
 | `alert(kind, title, text, &[buttons]) -> Option<usize>` | Sheet alert; the last button is the default and "Cancel" answers Esc |
+| `tab_strip(r, &titles, active) -> Option<TabAction>` | Tab strip with × and +; returns `Select`, `Close` or `New` (height `TAB_STRIP_H`) |
+
+## Several windows and descriptors
+
+- `ui.open_window(id, options)` opens another window of the same app; `ui.window_id()` says which
+  one is being drawn and `App::window_closed(id)` tells when one closes.
+- `ui.redraw_all_windows()` redraws the other windows after this frame (e.g. a preview that follows
+  the main window's selection).
+- `App::watch_fd` watches a descriptor from the start; `ui.watch_fd(fd)` adds more later (e.g. the
+  shell of a new tab). When one has data, the kit calls `App::fd_ready_on(fd)`.
 
 ## Menus in Glove's menu bar
 
