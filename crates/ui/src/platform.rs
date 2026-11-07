@@ -801,6 +801,12 @@ impl<A: App> Runner<A> {
     /// Devolve verdadeiro se o tamanho mudou na hora (o quadro precisa ser refeito).
     fn after_frame(&mut self) -> bool {
         let mut resized = false;
+        if std::mem::take(&mut self.w.mem.redraw_all) && !self.others.is_empty() {
+            let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(0)), |_, _, st: &mut Runner<A>| {
+                st.redraw_all();
+                TimeoutAction::Drop
+            });
+        }
         if let Some((w, h, animate)) = self.w.mem.size_req.take() {
             let target = self.w.size_anim.map(|a| a.1).unwrap_or((self.w.width, self.w.height));
             if (w, h) != target {

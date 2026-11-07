@@ -394,6 +394,8 @@ pub struct Memory {
     pub(crate) window_id: u32,
     /// Janelas novas pedidas pelo app: (número, opções).
     pub(crate) open_windows: Vec<(u32, crate::platform::WindowOptions)>,
+    /// O app pediu para redesenhar as outras janelas também.
+    pub(crate) redraw_all: bool,
     /// Seta de rolagem apertada: (id, próxima repetição).
     scroll_repeat: Option<(Id, std::time::Instant)>,
     /// Superfícies de rascunho reaproveitadas (recorte de áreas roláveis).
@@ -692,6 +694,12 @@ impl<'a> Ui<'a> {
     /// Número da janela que está sendo desenhada (0 = a primeira).
     pub fn window_id(&self) -> u32 {
         self.mem.window_id
+    }
+
+    /// Redesenha também as outras janelas do app depois deste quadro (quando o que
+    /// elas mostram depende do que mudou nesta, ex.: uma prévia que segue a seleção).
+    pub fn redraw_all_windows(&mut self) {
+        self.mem.redraw_all = true;
     }
 
     /// Abre outra janela do mesmo app, com o número `id` (escolhido pelo app;
