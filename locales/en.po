@@ -728,3 +728,18 @@ msgstr "OK"
 
 msgid "Todos os Apps"
 msgstr "All Apps"
+
+msgid "Mesa virtual anterior"
+msgstr "Previous desktop"
+
+msgid "Próxima mesa virtual"
+msgstr "Next desktop"
+
+msgid "Levar a janela para a mesa anterior"
+msgstr "Move window to previous desktop"
+
+msgid "Levar a janela para a próxima mesa"
+msgstr "Move window to next desktop"
+
+msgid "Mesa {}"
+msgstr "Desktop {}"

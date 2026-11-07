@@ -625,6 +625,10 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("expose_desktop", "Exposé: mostrar a mesa"),
     ("dashboard", "Painel de Widgets"),
     ("grade", "Todos os Apps"),
+    ("desk_prev", "Mesa virtual anterior"),
+    ("desk_next", "Próxima mesa virtual"),
+    ("desk_move_prev", "Levar a janela para a mesa anterior"),
+    ("desk_move_next", "Levar a janela para a próxima mesa"),
     ("cycle_windows", "Alternar janelas do app"),
     ("preferences", "Abrir Preferências"),
     ("screenshot", "Captura de tela"),
@@ -718,7 +722,12 @@ pub struct Config {
     pub search: SearchPrefs,
     #[serde(default)]
     pub media: Media,
+    /// Quantas mesas virtuais (1 = só a mesa de sempre).
+    pub desktops: u32,
 }
+
+/// Mesas virtuais: de 1 a este tanto.
+pub const MAX_DESKTOPS: u32 = 9;
 
 pub fn default_prefs_favorites() -> Vec<String> {
     ["monitor", "dock", "teclado"].map(String::from).to_vec()
@@ -760,6 +769,10 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
         ("expose_desktop", "F11"),
         ("dashboard", "F12"),
         ("grade", "F4"),
+        ("desk_prev", "Ctrl+Super+Left"),
+        ("desk_next", "Ctrl+Super+Right"),
+        ("desk_move_prev", "Ctrl+Super+Shift+Left"),
+        ("desk_move_next", "Ctrl+Super+Shift+Right"),
         ("cycle_windows", "Ctrl+grave"),
         ("preferences", "Super+Comma"),
         ("screenshot", "Print"),
@@ -872,6 +885,7 @@ impl Default for Config {
             security: Security::default(),
             search: SearchPrefs::default(),
             media: Media::default(),
+            desktops: 4,
         }
     }
 }

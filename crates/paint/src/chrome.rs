@@ -1876,6 +1876,36 @@ pub fn expose_label(fonts: &Fonts, text: &str, scale: f32) -> Option<Canvas> {
     Some(c)
 }
 
+/// Faixa das mesas virtuais no alto do Exposé: a moldura de cada miniatura
+/// (`rects`, já no espaço da faixa) e o nome embaixo. A atual tem a moldura azul;
+/// `target` (sob o mouse, ou onde a janela vai cair) fica com a branca.
+/// As miniaturas em si (o fundo e as janelas) são desenhadas por cima pelo compositor.
+pub fn desk_strip(fonts: &Fonts, rects: &[(f32, f32, f32, f32)], cur: usize, target: Option<usize>, w: f32, h: f32, scale: f32) -> Option<Canvas> {
+    let mut c = Canvas::new(w, h, scale)?;
+    for (i, &(x, y, rw, rh)) in rects.iter().enumerate() {
+        // Sombra suave e a moldura, um pouco para fora da miniatura.
+        for (k, a) in [(5.0, 18), (3.0, 30), (1.5, 50)] {
+            c.fill(rrect(x - k, y - k + 2.0, rw + 2.0 * k, rh + 2.0 * k, 4.0 + k), &solid(rgba(0, 0, 0, a)));
+        }
+        let (col, width) = if i == cur {
+            (rgba(90, 160, 255, 255), 3.0)
+        } else if target == Some(i) {
+            (rgba(255, 255, 255, 240), 2.5)
+        } else {
+            (rgba(255, 255, 255, 110), 1.0)
+        };
+        let o = width / 2.0 + 0.5;
+        c.stroke(rrect(x - o, y - o, rw + 2.0 * o, rh + 2.0 * o, 4.0), &solid(col), width);
+        let label = tr!("Mesa {}", i + 1);
+        let px = 11.5;
+        let lw = fonts.measure(&label, px, true);
+        let (lx, ly) = (x + (rw - lw) / 2.0, y + rh + 19.0);
+        fonts.draw(&mut c, &label, lx, ly + 1.0, px, true, rgba(0, 0, 0, 160));
+        fonts.draw(&mut c, &label, lx, ly, px, true, Color::WHITE);
+    }
+    Some(c)
+}
+
 // ---------------------------------------------------------------------------
 // Troca de apps (Super+Tab, como no 10.4)
 // ---------------------------------------------------------------------------
