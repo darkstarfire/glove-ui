@@ -746,3 +746,6 @@ msgstr "Desktop {}"
 
 msgid "Tela cheia"
 msgstr "Full screen"
+
+msgid "Cópias de Segurança"
+msgstr "Backups"

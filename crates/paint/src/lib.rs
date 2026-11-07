@@ -20,6 +20,7 @@ pub use tiger::TRASH_FULL_AT;
 pub mod wallpaper;
 pub mod widgets;
 
+mod icons10;
 pub use font::Fonts;
 pub use theme::{Theme, Variant};
 pub use tiny_skia;
