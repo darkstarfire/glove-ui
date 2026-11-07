@@ -194,6 +194,7 @@ impl Icon {
             "archiver" => Icon::Archiver,
             "house" => Icon::House,
             "apps-place" => Icon::AppsPlace,
+            "apps-grid" => Icon::Pref(PrefKind::ShowAll),
             "document" => Icon::Document,
             "picture" | "image" => Icon::Picture,
             "file" => Icon::File,

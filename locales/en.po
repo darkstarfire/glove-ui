@@ -725,3 +725,6 @@ msgstr "List"
 msgid "OK"
 msgstr "OK"
 
+
+msgid "Todos os Apps"
+msgstr "All Apps"

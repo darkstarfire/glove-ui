@@ -624,6 +624,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("expose_app", "Exposé: janelas do app"),
     ("expose_desktop", "Exposé: mostrar a mesa"),
     ("dashboard", "Painel de Widgets"),
+    ("grade", "Todos os Apps"),
     ("cycle_windows", "Alternar janelas do app"),
     ("preferences", "Abrir Preferências"),
     ("screenshot", "Captura de tela"),
@@ -724,7 +725,10 @@ pub fn default_prefs_favorites() -> Vec<String> {
 }
 
 /// Aumente quando a lista padrão do Dock ganhar apps novos.
-pub const DOCK_REV: u32 = 8;
+pub const DOCK_REV: u32 = 9;
+
+/// O item do Dock que abre a grade com todos os apps (o compositor a mostra; não é um programa).
+pub const GRADE_ID: &str = "glove.Grade";
 
 fn default_removable() -> String {
     "abrir".into()
@@ -755,6 +759,7 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
         ("expose_app", "F10"),
         ("expose_desktop", "F11"),
         ("dashboard", "F12"),
+        ("grade", "F4"),
         ("cycle_windows", "Ctrl+grave"),
         ("preferences", "Super+Comma"),
         ("screenshot", "Print"),
@@ -777,6 +782,7 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
 pub fn default_dock_apps() -> Vec<DockApp> {
     vec![
         app(tr!("Arquivos"), "files", "glove-files", "glove.Files"),
+        app(tr!("Todos os Apps"), "apps-grid", "", GRADE_ID),
         app("Terminal", "terminal", "glove-term", "glove.Terminal"),
         app(tr!("Navegador"), "globe", "glove-navegador", "glove.Navegador"),
         app(tr!("Correio"), "mail", "glove-correio", "glove.Correio"),
@@ -974,7 +980,13 @@ impl Config {
         });
         for d in defaults {
             if !self.dock_apps.iter().any(|a| a.app_id == d.app_id) {
-                self.dock_apps.push(d);
+                // A grade de apps vai logo depois do Arquivos, como no Dock novo.
+                if d.app_id == GRADE_ID {
+                    let at = self.dock_apps.iter().position(|a| a.app_id == "glove.Files").map_or(0, |i| i + 1);
+                    self.dock_apps.insert(at, d);
+                } else {
+                    self.dock_apps.push(d);
+                }
             }
         }
         if self.terminal.contains("ptyxis") || self.terminal == "foot" {
