@@ -749,3 +749,6 @@ msgstr "Full screen"
 
 msgid "Cópias de Segurança"
 msgstr "Backups"
+
+msgid "Central de Apps"
+msgstr "App Center"

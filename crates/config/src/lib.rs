@@ -833,6 +833,7 @@ pub fn extra_apps() -> Vec<DockApp> {
         app(tr!("Acesso às Chaves"), "keychain", "glove-chaves", "glove.Chaves"),
         app(tr!("Utilitário de Rede"), "netutil", "glove-utilrede", "glove.UtilRede"),
         app(tr!("Cópias de Segurança"), "backup", "glove-copias", "glove.Copias"),
+        app(tr!("Central de Apps"), "appcenter", "glove-central", "glove.Central"),
     ]
 }
 
