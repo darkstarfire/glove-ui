@@ -656,3 +656,69 @@ msgstr "{} items"
 msgid "Áudio"
 msgstr "Audio"
 
+msgid "Olá, Glove!"
+msgstr "Hello, Glove!"
+
+msgid "Você clicou {} vezes."
+msgstr "You clicked {} times."
+
+msgid "Clique aqui"
+msgstr "Click here"
+
+msgid "Olá"
+msgstr "Hello"
+
+msgid "Nome:"
+msgstr "Name:"
+
+msgid "Tema:"
+msgstr "Theme:"
+
+msgid "Volume:"
+msgstr "Volume:"
+
+msgid "Tamanho:"
+msgstr "Size:"
+
+msgid "Pequeno"
+msgstr "Small"
+
+msgid "Grande"
+msgstr "Large"
+
+msgid "Mostrar avisos"
+msgstr "Show warnings"
+
+msgid "Olá, {}!"
+msgstr "Hello, {}!"
+
+msgid "pessoa"
+msgstr "there"
+
+msgid "Salvo"
+msgstr "Saved"
+
+msgid "Formulário"
+msgstr "Form"
+
+msgid "Novo Item"
+msgstr "New Item"
+
+msgid "Item {}"
+msgstr "Item {}"
+
+msgid "Buscar"
+msgstr "Search"
+
+msgid "Maçã"
+msgstr "Apple"
+
+msgid "Banana"
+msgstr "Banana"
+
+msgid "Laranja"
+msgstr "Orange"
+
+msgid "Lista"
+msgstr "List"
+

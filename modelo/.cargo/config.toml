@@ -1,0 +1,3 @@
+# As traduções do app (locales/*.po) entram no programa na compilação.
+[env]
+GLOVE_LOCALES = { value = "locales", relative = true }

@@ -1,0 +1,23 @@
+# Meu App — English translation (the msgid is the text in the source code).
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+msgid "Arquivo"
+msgstr "File"
+
+msgid "Limpar Notas"
+msgstr "Clear Notes"
+
+msgid "Minhas notas"
+msgstr "My notes"
+
+msgid "Guardar"
+msgstr "Keep"
+
+msgid "Nenhuma nota ainda."
+msgstr "No notes yet."
+
+msgid "Meu App"
+msgstr "My App"

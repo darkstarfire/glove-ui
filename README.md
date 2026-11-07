@@ -4,7 +4,13 @@ The toolkit, drawing library, theme and shared settings that [Glove](https://git
 apps are made with — a Mac OS X Tiger–style look (gel buttons, pinstripes, brushed metal,
 soft shadows), drawn entirely in code, for Wayland apps written in Rust.
 
-*Português: a biblioteca gráfica dos apps do Glove. A documentação completa vem a seguir.*
+*Português: a biblioteca gráfica dos apps do Glove — veja o [guia](docs/GUIA.md).*
+
+**Guide:** [docs/GUIDE.md](docs/GUIDE.md) · **Examples:** `examples/` in `crates/ui` · **App template:** [`modelo/`](modelo)
+
+```sh
+cargo run --release -p glove-ui --example ola
+```
 
 | Crate | What it is |
 |---|---|

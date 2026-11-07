@@ -116,7 +116,9 @@ fn catalogo() -> &'static Catalogo {
 
 fn carregar(pedido: &str) -> Catalogo {
     let mut textos = HashMap::new();
-    if pedido == ORIGEM {
+    // O idioma do código-fonte só lê catálogo se houver um (app escrito em outra
+    // língua que traz um pt.po, por exemplo).
+    if pedido == ORIGEM && !EMBUTIDOS.iter().any(|(l, _)| *l == ORIGEM) {
         return Catalogo { idioma: ORIGEM.into(), textos };
     }
     // Pastas de fora (sem recompilar) e depois o embutido.
@@ -132,7 +134,7 @@ fn carregar(pedido: &str) -> Catalogo {
     }
     let mut idioma = pedido.to_string();
     let embutido = EMBUTIDOS.iter().find(|(l, _)| *l == pedido).map(|(_, t)| *t);
-    if fontes.is_empty() && embutido.is_none() {
+    if fontes.is_empty() && embutido.is_none() && pedido != ORIGEM {
         // Idioma sem tradução: inglês.
         idioma = "en".into();
     }

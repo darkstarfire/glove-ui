@@ -1,0 +1,12 @@
+# Modelo de app da glove-ui: copie esta pasta, troque o nome e comece.
+[package]
+name = "meu-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.0" }
+
+[profile.release]
+lto = "thin"
+strip = true
