@@ -48,6 +48,8 @@ pub struct FileBrowser {
     new_folder: Option<String>,
     /// Ocupa a janela toda (janela própria de Abrir/Salvar), sem folha nem fundo escurecido.
     pub whole_window: bool,
+    /// Tamanho da janela antes de crescer para caber a folha (volta a ele ao fechar).
+    grown_from: Option<(f32, f32)>,
 }
 
 fn home() -> PathBuf {
@@ -115,7 +117,7 @@ impl FileBrowser {
 
     fn new(mode: Mode, dir: Option<PathBuf>, name: String, filter: &[&str]) -> Self {
         let dir = dir.filter(|d| d.is_dir()).unwrap_or_else(home);
-        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, whole_window: false }
+        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, whole_window: false, grown_from: None }
     }
 
     /// Pasta em que se está (a última coluna).
@@ -181,7 +183,26 @@ impl FileBrowser {
 impl Ui<'_> {
     /// Desenha a folha Abrir/Salvar. Devolve a escolha quando o usuário decide.
     /// Enquanto aberta, nada embaixo responde.
+    ///
+    /// Janela pequena demais para a folha (um painel, como o do Vídeo): ela cresce
+    /// enquanto a folha está aberta e volta ao tamanho de antes ao fechar.
     pub fn file_sheet(&mut self, fb: &mut FileBrowser) -> Option<Choice> {
+        const ROOM: (f32, f32) = (600.0, 400.0);
+        let (w, h) = (self.c.w, self.c.h);
+        if !fb.whole_window && fb.grown_from.is_none() && (w < ROOM.0 - 1.0 || h < ROOM.1 - 1.0) {
+            fb.grown_from = Some((w, h));
+            self.set_window_size(w.max(ROOM.0), h.max(ROOM.1), true);
+        }
+        let choice = self.file_sheet_inner(fb);
+        if choice.is_some() {
+            if let Some((w, h)) = fb.grown_from.take() {
+                self.set_window_size(w, h, true);
+            }
+        }
+        choice
+    }
+
+    fn file_sheet_inner(&mut self, fb: &mut FileBrowser) -> Option<Choice> {
         self.set_enabled(true);
         let (w, h) = (self.c.w, self.c.h);
         let ink = rgba(20, 20, 20, 255);

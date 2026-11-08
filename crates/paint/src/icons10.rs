@@ -170,3 +170,73 @@ pub fn messages(pm: &mut Canvas, x: f32, y: f32, s: f32) {
         pm.fill(u.circ(0.25 + k as f32 * 0.12, 0.61, 0.03), &solid(rgba(255, 255, 255, 235)));
     }
 }
+
+/// Todos os Apps: disco de alumínio escovado com aro de vidro azul e um foguete
+/// retrô de pé (branco e vermelho), subindo com a chama e a fumaça.
+pub fn apps_grid(pm: &mut Canvas, x: f32, y: f32, s: f32) {
+    let u = U { x, y, s };
+    let (cx, cy) = (0.5, 0.5);
+    soft_shadow(pm, u.circ(cx, cy, 0.45), s, 0.9);
+    // O disco: alumínio com o brilho de metal torneado (fatias claras e escuras).
+    pm.fill(u.circ(cx, cy, 0.45), &linear(u.px(0.2), u.py(0.05), u.px(0.8), u.py(0.95), &[(0.0, rgba(236, 238, 242, 255)), (0.5, rgba(196, 200, 208, 255)), (1.0, rgba(150, 154, 164, 255))]));
+    let n = 48;
+    for i in 0..n {
+        let (a0, a1) = ((i as f32 / n as f32) * std::f32::consts::TAU, ((i as f32 + 1.0) / n as f32) * std::f32::consts::TAU);
+        // Mais claro em cima à esquerda e embaixo à direita, como o metal girado.
+        let k = ((a0 * 2.0 + 0.8).cos() * 0.5 + 0.5) * ((i % 2) as f32 * 0.4 + 0.6);
+        let c = if k > 0.5 { rgba(255, 255, 255, ((k - 0.5) * 70.0) as u8) } else { rgba(0, 0, 0, ((0.5 - k) * 40.0) as u8) };
+        let r = 0.43;
+        pm.fill(u.poly(&[(cx, cy), (cx + r * a0.cos(), cy + r * a0.sin()), (cx + r * a1.cos(), cy + r * a1.sin())]), &solid(c));
+    }
+    // Aro: borda escura, o anel de vidro azul e o reflexo de cima.
+    pm.stroke(u.circ(cx, cy, 0.445), &solid(rgba(90, 94, 104, 255)), u.lw(0.012));
+    pm.stroke(u.circ(cx, cy, 0.41), &linear(u.px(0.5), u.py(0.09), u.px(0.5), u.py(0.91), &[(0.0, rgba(150, 205, 255, 255)), (1.0, rgba(25, 90, 190, 255))]), u.lw(0.035));
+    pm.stroke(u.circ(cx, cy, 0.39), &solid(rgba(255, 255, 255, 90)), u.lw(0.008));
+    pm.fill(u.ov(0.22, 0.1, 0.56, 0.2), &vgrad(u.py(0.1), u.py(0.3), &[(0.0, rgba(255, 255, 255, 120)), (1.0, rgba(255, 255, 255, 0))]));
+
+    // Fumaça embaixo.
+    for &(fx, fy, fr) in &[(0.38, 0.8, 0.06), (0.5, 0.84, 0.07), (0.62, 0.8, 0.06), (0.44, 0.76, 0.045), (0.57, 0.76, 0.045)] {
+        pm.fill(u.circ(fx, fy, fr), &radial(u.px(fx - fr * 0.3), u.py(fy - fr * 0.3), u.d(fr * 1.3), &[(0.0, rgba(255, 255, 255, 235)), (1.0, rgba(190, 194, 204, 200))]));
+    }
+    // Chama: gota amarela e laranja.
+    let mut pb = PathBuilder::new();
+    pb.move_to(u.px(0.455), u.py(0.68));
+    pb.quad_to(u.px(0.44), u.py(0.78), u.px(0.5), u.py(0.86));
+    pb.quad_to(u.px(0.56), u.py(0.78), u.px(0.545), u.py(0.68));
+    pb.close();
+    pm.fill(pb.finish(), &linear(u.px(0.5), u.py(0.68), u.px(0.5), u.py(0.86), &[(0.0, rgba(255, 250, 200, 255)), (0.4, rgba(255, 200, 60, 255)), (1.0, rgba(240, 90, 20, 230))]));
+
+    // Aletas vermelhas (atrás do corpo).
+    let red = |y0: f32, y1: f32| linear(u.px(0.3), u.py(y0), u.px(0.7), u.py(y1), &[(0.0, rgba(250, 110, 100, 255)), (0.5, rgba(215, 40, 35, 255)), (1.0, rgba(140, 20, 20, 255))]);
+    pm.fill(u.poly(&[(0.43, 0.5), (0.33, 0.62), (0.32, 0.71), (0.44, 0.65)]), &red(0.5, 0.71));
+    pm.fill(u.poly(&[(0.57, 0.5), (0.67, 0.62), (0.68, 0.71), (0.56, 0.65)]), &red(0.5, 0.71));
+    // Bocal.
+    pm.fill(u.poly(&[(0.455, 0.655), (0.545, 0.655), (0.56, 0.695), (0.44, 0.695)]), &linear(u.px(0.44), 0.0, u.px(0.56), 0.0, &[(0.0, rgba(70, 72, 80, 255)), (0.5, rgba(160, 164, 172, 255)), (1.0, rgba(60, 62, 70, 255))]));
+    // Corpo: ogiva branca com sombra de cilindro.
+    let body = |pb: &mut PathBuilder| {
+        pb.move_to(u.px(0.5), u.py(0.13));
+        pb.cubic_to(u.px(0.555), u.py(0.18), u.px(0.585), u.py(0.3), u.px(0.582), u.py(0.45));
+        pb.line_to(u.px(0.565), u.py(0.665));
+        pb.line_to(u.px(0.435), u.py(0.665));
+        pb.line_to(u.px(0.418), u.py(0.45));
+        pb.cubic_to(u.px(0.415), u.py(0.3), u.px(0.445), u.py(0.18), u.px(0.5), u.py(0.13));
+        pb.close();
+    };
+    let mut pb = PathBuilder::new();
+    body(&mut pb);
+    let body_path = pb.finish();
+    pm.fill(body_path.clone(), &linear(u.px(0.418), 0.0, u.px(0.582), 0.0, &[(0.0, rgba(170, 174, 184, 255)), (0.35, rgba(255, 255, 255, 255)), (0.7, rgba(228, 230, 236, 255)), (1.0, rgba(140, 144, 156, 255))]));
+    // Ponta vermelha: o corpo recortado acima de uma linha.
+    if let Some(clip) = u.rr(0.3, 0.1, 0.4, 0.165, 0.0) {
+        pm.fill_clipped(body_path.clone(), &red(0.13, 0.27), Some(clip));
+    }
+    pm.fill(u.rr(0.425, 0.258, 0.15, 0.014, 0.0), &solid(rgba(120, 20, 20, 120)));
+    pm.stroke(body_path, &solid(rgba(80, 84, 96, 255)), u.lw(0.01));
+    // Faixa vermelha na base e a escotilha de vidro azul.
+    pm.fill(u.poly(&[(0.437, 0.6), (0.563, 0.6), (0.565, 0.665), (0.435, 0.665)]), &red(0.6, 0.665));
+    pm.fill(u.circ(0.5, 0.4, 0.05), &solid(rgba(90, 94, 104, 255)));
+    pm.fill(u.circ(0.5, 0.4, 0.038), &radial(u.px(0.488), u.py(0.388), u.d(0.05), &[(0.0, rgba(190, 230, 255, 255)), (0.6, rgba(60, 140, 230, 255)), (1.0, rgba(20, 60, 140, 255))]));
+    pm.fill(u.ov(0.474, 0.372, 0.03, 0.018), &solid(rgba(255, 255, 255, 200)));
+    // Aleta do meio (de frente).
+    pm.fill(u.poly(&[(0.492, 0.66), (0.508, 0.66), (0.51, 0.71), (0.49, 0.71)]), &red(0.66, 0.71));
+}

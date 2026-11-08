@@ -97,6 +97,8 @@ pub enum Icon {
     Photos,
     Recorder,
     Messages,
+    /// Todos os Apps (a grade de apps): disco de metal com o foguete.
+    AppsGrid,
     /// Ícone de um tema do sistema, pelo nome (ex.: "firefox"); número da tabela de nomes.
     System(u32),
 }
@@ -200,7 +202,7 @@ impl Icon {
             "archiver" => Icon::Archiver,
             "house" => Icon::House,
             "apps-place" => Icon::AppsPlace,
-            "apps-grid" => Icon::Pref(PrefKind::ShowAll),
+            "apps-grid" => Icon::AppsGrid,
             "backup" => Icon::Backup,
             "appcenter" => Icon::AppCenter,
             "photos" => Icon::Photos,
@@ -494,6 +496,7 @@ fn draw_raw(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, 
         Icon::Photos => crate::icons10::photos(pm, x, y, s),
         Icon::Recorder => crate::icons10::recorder(pm, x, y, s),
         Icon::Messages => crate::icons10::messages(pm, x, y, s),
+        Icon::AppsGrid => crate::icons10::apps_grid(pm, x, y, s),
         Icon::Archiver => crate::tiger_prefs::archiver(pm, x, y, s),
         Icon::House => crate::tiger_real::house(pm, x, y, s),
         Icon::AppsPlace => crate::tiger_real::apps_place(pm, x, y, s),
