@@ -990,9 +990,16 @@ impl<'a> Ui<'a> {
 
     /// Rótulo alinhado à direita numa largura fixa (formulários).
     pub fn label_right(&mut self, t: &str, width: f32) {
-        let w = self.fonts.measure(t, TEXT, false);
+        // Maior que a coluna: termina em "…" (nunca passa da borda da área).
+        let t = self.fonts.ellipsize(t, TEXT, false, width);
+        let w = self.fonts.measure(&t, TEXT, false);
         let r = self.alloc(width, CONTROL_H);
-        self.fonts.draw(self.c, t, r.x + width - w, r.y + 15.0, TEXT, false, ink());
+        self.fonts.draw(self.c, &t, r.x + width - w, r.y + 15.0, TEXT, false, ink());
+    }
+
+    /// Largura de um texto no tamanho dos rótulos (para medir colunas de formulário).
+    pub fn label_width(&self, t: &str) -> f32 {
+        self.fonts.measure(t, TEXT, false)
     }
 
     /// Texto em várias linhas, quebrado na largura disponível.
@@ -1935,6 +1942,26 @@ impl<'a> Ui<'a> {
     /// Área rolável na vertical com a barra de rolagem em gel à direita, sempre visível
     /// como na era (sem polegar quando tudo cabe). Aplica a roda do mouse, as setas, o
     /// clique no trilho e o arrasto do polegar a `offset` e devolve a área do conteúdo.
+    /// Área com rolagem vertical para um formulário: o conteúdo é desenhado deslocado,
+    /// recortado na área, e só recebe o mouse dentro dela. `content` é a altura do
+    /// conteúdo (a do quadro anterior); devolve a deste quadro. A barra só aparece
+    /// quando o conteúdo não cabe.
+    pub fn scroll_view(&mut self, area: Rect, offset: &mut f32, content: f32, f: impl FnOnce(&mut Self)) -> f32 {
+        let inner = if content > area.h + 0.5 { self.scroll_area(area, offset, content, 30.0) } else { area };
+        *offset = offset.clamp(0.0, (content - inner.h).max(0.0));
+        let s = self.c.scale;
+        let old_clip = self.c.clip();
+        self.c.set_clip(Some([(inner.x * s).floor() as i32, (inner.y * s).floor() as i32, ((inner.x + inner.w) * s).ceil() as i32, ((inner.y + inner.h) * s).ceil() as i32]));
+        let was = self.disabled;
+        if !inner.contains(self.input.pos) {
+            self.disabled = true;
+        }
+        let (_, h) = self.child(false, inner.x, inner.y - *offset, inner.w, f);
+        self.disabled = was;
+        self.c.set_clip(old_clip);
+        h
+    }
+
     pub fn scroll_area(&mut self, area: Rect, offset: &mut f32, content: f32, line: f32) -> Rect {
         let id = self.next_id();
         if self.hovered(area) && self.input.scroll != 0.0 {
