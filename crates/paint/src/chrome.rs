@@ -1118,13 +1118,13 @@ pub fn ending_spinner_center(w: f32, h: f32) -> (f32, f32) {
     (w / 2.0, h / 2.0 + 70.0)
 }
 
-/// Fundo cinza-claro de inicialização, com o orbe e o texto (sem o giratório,
+/// Fundo cinza-claro de inicialização, com a logo e o texto (sem o giratório,
 /// que é uma peça separada para não redesenhar a tela inteira a cada passo).
 pub fn ending_screen(fonts: &Fonts, theme: &Theme, w: f32, h: f32, label: &str, scale: f32) -> Option<Canvas> {
     let mut c = Canvas::new(w, h, scale)?;
     c.fill_rect(0.0, 0.0, w, h, &vgrad(0.0, h, &[(0.0, rgba(214, 216, 219, 255)), (1.0, rgba(188, 191, 196, 255))]));
     let (cx, cy) = (w / 2.0, h / 2.0 - 30.0);
-    gel_circle(&mut c, cx, cy, 44.0, theme.accent);
+    icons::logo(&mut c, cx - 52.0, cy - 52.0, 104.0, theme.accent);
     let px = 15.0;
     let tw = fonts.measure(label, px, false);
     let (_, sy) = ending_spinner_center(w, h);
@@ -1744,7 +1744,7 @@ pub const STARTUP_W: f32 = 340.0;
 pub const STARTUP_H: f32 = 190.0;
 pub const STARTUP_SHADOW: f32 = 24.0;
 
-/// Painel "Iniciando sessão": orbe, nome, o passo atual e a barra de progresso.
+/// Painel "Iniciando sessão": logo, nome, o passo atual e a barra de progresso.
 pub fn startup_panel(fonts: &Fonts, theme: &Theme, status: &str, progress: f32, scale: f32) -> Option<Canvas> {
     let (w, h, m) = (STARTUP_W, STARTUP_H, STARTUP_SHADOW);
     let mut c = Canvas::new(w + 2.0 * m, h + 2.0 * m, scale)?;
@@ -1755,7 +1755,7 @@ pub fn startup_panel(fonts: &Fonts, theme: &Theme, status: &str, progress: f32, 
     c.fill(rrect(x0, y0, w, h, 8.0), &solid(theme.body_b));
     c.pinstripes(x0, y0 + 8.0, w, h - 16.0, theme.body_a, theme.body_b);
     c.stroke(rrect(x0, y0, w, h, 8.0), &solid(rgba(0, 0, 0, 90)), 1.0 / scale);
-    gel_circle(&mut c, x0 + w / 2.0, y0 + 46.0, 26.0, theme.accent);
+    icons::logo(&mut c, x0 + w / 2.0 - 32.0, y0 + 14.0, 64.0, theme.accent);
     let center = |c: &mut Canvas, t: &str, y: f32, px: f32, bold: bool, col: Color| {
         let tw = fonts.measure(t, px, bold);
         fonts.draw(c, t, x0 + (w - tw) / 2.0, y, px, bold, col);
