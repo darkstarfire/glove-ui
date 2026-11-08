@@ -741,11 +741,24 @@ pub const DOCK_REV: u32 = 9;
 
 /// O item do Dock que abre a grade com todos os apps (o compositor a mostra; não é um programa).
 pub const GRADE_ID: &str = "glove.Grade";
-/// Papel de parede do Glove OS (do pacote glove-os). Onde ele existe, é o padrão.
-pub const GLOVE_OS_WALLPAPER: &str = "/usr/share/glove-os/papel-de-parede.png";
+/// O papel de parede do Glove OS (a luva com o nome), onde o pacote o instalou
+/// (`share/glove/papeis/glove-os.png`, ao lado da pasta dos programas). É o padrão.
+pub fn glove_os_wallpaper() -> Option<String> {
+    static P: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    P.get_or_init(|| {
+        let mut c: Vec<PathBuf> = Vec::new();
+        if let Some(bin) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+            c.push(bin.join("../share/glove/papeis/glove-os.png"));
+        }
+        c.push("/usr/share/glove/papeis/glove-os.png".into());
+        c.push("/usr/local/share/glove/papeis/glove-os.png".into());
+        c.into_iter().find(|p| p.exists()).and_then(|p| p.canonicalize().ok()).map(|p| p.to_string_lossy().into_owned())
+    })
+    .clone()
+}
 
 fn default_wallpaper() -> String {
-    if std::path::Path::new(GLOVE_OS_WALLPAPER).exists() { GLOVE_OS_WALLPAPER.into() } else { "ondas".into() }
+    glove_os_wallpaper().unwrap_or_else(|| "ondas".into())
 }
 
 fn default_removable() -> String {
