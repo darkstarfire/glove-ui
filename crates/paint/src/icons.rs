@@ -701,8 +701,48 @@ fn window(pm: &mut Canvas, fonts: &Fonts, x: f32, y: f32, s: f32, letter: Option
 }
 
 /// Marca do menu principal: uma gota de gel azul.
-pub fn logo(pm: &mut Canvas, x: f32, y: f32, s: f32, accent: tiny_skia::Color) {
-    gel_circle(pm, x + s / 2.0, y + s / 2.0, s / 2.0, accent);
+///
+/// A logo do Glove OS: a luva de gel azul mordida (imagem de 256 px, reduzida pela
+/// metade quantas vezes for preciso, para ficar nítida também na barra de menu).
+pub fn logo(pm: &mut Canvas, x: f32, y: f32, s: f32, _accent: tiny_skia::Color) {
+    let px = s * pm.scale;
+    let mips = logo_mips();
+    let Some(img) = mips.iter().rev().find(|m| m.width() as f32 >= px).or(mips.first()) else { return };
+    let k = px / img.width() as f32;
+    let t = tiny_skia::Transform::from_row(k, 0.0, 0.0, k, (x * pm.scale).round(), (y * pm.scale).round());
+    let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
+    pm.draw_pixmap_t(img.as_ref(), &paint, t);
+}
+
+/// A imagem da logo e as reduções dela (256, 128, 64… até 8 px).
+fn logo_mips() -> &'static [tiny_skia::Pixmap] {
+    static MIPS: std::sync::OnceLock<Vec<tiny_skia::Pixmap>> = std::sync::OnceLock::new();
+    MIPS.get_or_init(|| {
+        let Ok(first) = tiny_skia::Pixmap::decode_png(include_bytes!("../art/glove-os-256.png")) else { return Vec::new() };
+        let mut v = vec![first];
+        while let Some(half) = v.last().filter(|m| m.width() > 8).and_then(halve) {
+            v.push(half);
+        }
+        v
+    })
+}
+
+/// Metade do tamanho, cada pixel a média de quatro (os pixels já são pré-multiplicados).
+fn halve(src: &tiny_skia::Pixmap) -> Option<tiny_skia::Pixmap> {
+    let (w, h) = (src.width() / 2, src.height() / 2);
+    let mut out = tiny_skia::Pixmap::new(w, h)?;
+    let (sw, d) = (src.width() as usize, src.data());
+    let o = out.data_mut();
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            for c in 0..4 {
+                let at = |xx: usize, yy: usize| d[(yy * sw + xx) * 4 + c] as u32;
+                let sum = at(2 * x, 2 * y) + at(2 * x + 1, 2 * y) + at(2 * x, 2 * y + 1) + at(2 * x + 1, 2 * y + 1);
+                o[(y * w as usize + x) * 4 + c] = ((sum + 2) / 4) as u8;
+            }
+        }
+    }
+    Some(out)
 }
 
 

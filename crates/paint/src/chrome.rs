@@ -273,7 +273,7 @@ pub fn menubar(fonts: &Fonts, theme: &Theme, w: f32, titles: &[String], extras: 
     if open == Some(0) {
         hot(&mut c, logo.0, logo.1);
     }
-    icons::logo(&mut c, 13.0, 4.0, 14.0, if open == Some(0) { lighten(theme.accent, 0.5) } else { theme.accent });
+    icons::logo(&mut c, 11.0, 2.0, 18.0, if open == Some(0) { lighten(theme.accent, 0.5) } else { theme.accent });
 
     let mut x = 40.0;
     let mut ranges = Vec::with_capacity(titles.len());

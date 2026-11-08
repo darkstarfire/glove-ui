@@ -741,6 +741,12 @@ pub const DOCK_REV: u32 = 9;
 
 /// O item do Dock que abre a grade com todos os apps (o compositor a mostra; não é um programa).
 pub const GRADE_ID: &str = "glove.Grade";
+/// Papel de parede do Glove OS (do pacote glove-os). Onde ele existe, é o padrão.
+pub const GLOVE_OS_WALLPAPER: &str = "/usr/share/glove-os/papel-de-parede.png";
+
+fn default_wallpaper() -> String {
+    if std::path::Path::new(GLOVE_OS_WALLPAPER).exists() { GLOVE_OS_WALLPAPER.into() } else { "ondas".into() }
+}
 
 fn default_removable() -> String {
     "abrir".into()
@@ -860,7 +866,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             theme: "claro".into(),
-            wallpaper: "ondas".into(),
+            wallpaper: default_wallpaper(),
             terminal: default_terminal(),
             terminal_font: String::new(),
             terminal_font_size: 12.0,
