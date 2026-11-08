@@ -206,7 +206,7 @@ impl Ui<'_> {
         self.set_enabled(true);
         let (w, h) = (self.c.w, self.c.h);
         let ink = rgba(20, 20, 20, 255);
-        let (sx, sw, sh) = if fb.whole_window {
+        let (sx, sw, sh) = if fb.whole_window || fb.grown_from.is_some() {
             // Janela própria: o conteúdo da folha é a janela inteira.
             self.c.fill_rect(0.0, 0.0, w, h, &solid(self.theme.body_b));
             self.c.pinstripes(0.0, 0.0, w, h, self.theme.body_a, self.theme.body_b);
