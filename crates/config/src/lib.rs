@@ -796,7 +796,7 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
         ("desk_next", "Ctrl+Super+Right"),
         ("desk_move_prev", "Ctrl+Super+Shift+Left"),
         ("desk_move_next", "Ctrl+Super+Shift+Right"),
-        ("cycle_windows", "Ctrl+grave"),
+        ("cycle_windows", "Alt+Tab"),
         ("preferences", "Super+Comma"),
         ("screenshot", "Print"),
         ("screenshot_area", "Shift+Print"),
@@ -974,9 +974,15 @@ impl Config {
         std::fs::rename(tmp, p)
     }
 
-    /// Ações novas ganham o atalho padrão em configurações antigas.
+    /// Ações novas ganham o atalho padrão em configurações antigas, e padrões
+    /// que mudaram são trocados (só se o usuário não tiver mudado o atalho).
     pub fn add_missing_shortcuts(&mut self) -> bool {
         let mut added = false;
+        // Alternar as janelas do mesmo app: era Ctrl+`, agora Alt+Tab.
+        for s in self.shortcuts.iter_mut().filter(|s| s.action == "cycle_windows" && s.keys.eq_ignore_ascii_case("Ctrl+grave")) {
+            s.keys = "Alt+Tab".into();
+            added = true;
+        }
         for d in default_shortcuts() {
             if !self.shortcuts.iter().any(|s| s.action == d.action) {
                 self.shortcuts.push(d);

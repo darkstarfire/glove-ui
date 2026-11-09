@@ -817,17 +817,18 @@ pub(crate) fn trash(pm: &mut Canvas, x: f32, y: f32, s: f32, papers: u8) {
     if s >= 48.0 {
         pm.stroke(shift(&fr, -u.d(0.002), -u.d(0.003)), &solid(rgba(150, 152, 162, 150)), u.lw(0.003));
     }
-    // Cinta cromada do pé (um cilindro curto).
+    // Cinta cromada do pé (um cilindro curto visto de cima): as duas bordas seguem o
+    // arco da frente da elipse e curvam para baixo; o fundo escuro aparece acima dela.
     let band = {
         let mut pb = PathBuilder::new();
         let k = 24;
         for i in 0..=k {
-            let (px, py) = at(1.0, std::f32::consts::PI + i as f32 / k as f32 * std::f32::consts::PI);
+            let (px, py) = at(1.0, i as f32 / k as f32 * std::f32::consts::PI);
             if i == 0 { pb.move_to(px, py) } else { pb.line_to(px, py) }
         }
         for i in 0..=k {
-            let (px, py) = at(1.0, i as f32 / k as f32 * std::f32::consts::PI);
-            pb.line_to(px, py + u.d(base_h) * if i == 0 || i == k { 1.0 } else { 1.0 });
+            let (px, py) = at(1.0, std::f32::consts::PI - i as f32 / k as f32 * std::f32::consts::PI);
+            pb.line_to(px, py + u.d(base_h));
         }
         pb.close();
         pb.finish()

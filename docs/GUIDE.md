@@ -19,7 +19,7 @@ Or add the dependency to your own project:
 
 ```toml
 [dependencies]
-glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.11" }
+glove-ui = { git = "https://github.com/fabioaacarneiro/glove-ui", tag = "v0.2.12" }
 ```
 
 You need Rust 1.85 or newer and the `xkbcommon` development files (`libxkbcommon-dev` on
