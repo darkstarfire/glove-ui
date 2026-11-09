@@ -55,6 +55,8 @@ pub struct FileBrowser {
     pub whole_window: bool,
     /// Tamanho da janela antes de crescer para caber a folha (volta a ele ao fechar).
     grown_from: Option<(f32, f32)>,
+    /// Título e botão próprios (Inserir Imagem…), no lugar de Abrir.
+    labels: Option<(String, String)>,
 }
 
 fn home() -> PathBuf {
@@ -110,6 +112,12 @@ impl FileBrowser {
         Self::new(Mode::Open, dir, String::new(), filter)
     }
 
+    /// Troca o título e o botão (Abrir) por outros: "Inserir Imagem", "Inserir".
+    pub fn labeled(mut self, title: &str, button: &str) -> Self {
+        self.labels = Some((title.to_string(), button.to_string()));
+        self
+    }
+
     /// Escolher uma pasta, começando em `dir` (ou na pasta pessoal).
     pub fn folder(dir: Option<PathBuf>) -> Self {
         Self::new(Mode::Folder, dir, String::new(), &[])
@@ -122,7 +130,7 @@ impl FileBrowser {
 
     fn new(mode: Mode, dir: Option<PathBuf>, name: String, filter: &[&str]) -> Self {
         let dir = dir.filter(|d| d.is_dir()).unwrap_or_else(home);
-        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None }
+        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None, labels: None }
     }
 
     /// O conteúdo da pasta (lido do disco só na primeira vez).
@@ -250,7 +258,12 @@ impl Ui<'_> {
             }
             y += 34.0;
         } else {
-            self.fonts.draw(self.c, if fb.mode == Mode::Folder { tr!("Escolher uma pasta") } else { tr!("Abrir") }, sx + 18.0, y + 15.0, 13.0, true, ink);
+            let title = match &fb.labels {
+                Some((t, _)) => t.as_str(),
+                None if fb.mode == Mode::Folder => tr!("Escolher uma pasta"),
+                None => tr!("Abrir"),
+            };
+            self.fonts.draw(self.c, title, sx + 18.0, y + 15.0, 13.0, true, ink);
             y += 26.0;
         }
 
@@ -394,10 +407,11 @@ impl Ui<'_> {
             }
         }
         let (mut cancel, mut ok) = (false, false);
-        let ok_label = match fb.mode {
-            Mode::Save => tr!("Salvar"),
-            Mode::Folder => tr!("Escolher"),
-            Mode::Open => tr!("Abrir"),
+        let ok_label = match (&fb.labels, fb.mode) {
+            (Some((_, b)), _) => b.as_str(),
+            (None, Mode::Save) => tr!("Salvar"),
+            (None, Mode::Folder) => tr!("Escolher"),
+            (None, Mode::Open) => tr!("Abrir"),
         };
         self.area(Rect::new(sx + sw - 220.0, by, 95.0, 24.0), |ui| cancel = ui.button(tr!("Cancelar")));
         self.area(Rect::new(sx + sw - 115.0, by, 97.0, 24.0), |ui| ok = ui.default_button(ok_label));

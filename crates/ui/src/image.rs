@@ -40,6 +40,12 @@ pub const EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
 /// Abre a imagem inteira (cores pré-multiplicadas, prontas para desenhar).
 pub fn decode(path: &Path) -> Result<Pixmap, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    decode_bytes(&bytes)
+}
+
+/// Como `decode`, a partir dos bytes do arquivo (imagem dentro de um documento).
+pub fn decode_bytes(bytes: &[u8]) -> Result<Pixmap, String> {
+    let bytes = bytes.to_vec();
     match sniff(&bytes) {
         Some(Format::Png) => Pixmap::decode_png(&bytes).map_err(|e| format!("PNG inválido: {e}")),
         Some(Format::Jpeg) => {
