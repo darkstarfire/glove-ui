@@ -44,8 +44,13 @@ pub struct FileBrowser {
     scroll: Vec<f32>,
     error: Option<String>,
     first: bool,
-    /// Nova pasta: o nome sendo digitado.
+    /// Nova pasta: o nome sendo digitado e se o campo acabou de aparecer (pega o teclado).
     new_folder: Option<String>,
+    new_folder_first: bool,
+    /// O nome padrão ainda está intacto: aparece selecionado e a primeira tecla o troca.
+    new_folder_fresh: bool,
+    /// O conteúdo de cada pasta, lido uma vez (ler o disco a cada quadro travava a folha).
+    listing: std::collections::HashMap<PathBuf, std::rc::Rc<Vec<(String, PathBuf, bool)>>>,
     /// Ocupa a janela toda (janela própria de Abrir/Salvar), sem folha nem fundo escurecido.
     pub whole_window: bool,
     /// Tamanho da janela antes de crescer para caber a folha (volta a ele ao fechar).
@@ -117,7 +122,12 @@ impl FileBrowser {
 
     fn new(mode: Mode, dir: Option<PathBuf>, name: String, filter: &[&str]) -> Self {
         let dir = dir.filter(|d| d.is_dir()).unwrap_or_else(home);
-        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, whole_window: false, grown_from: None }
+        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None }
+    }
+
+    /// O conteúdo da pasta (lido do disco só na primeira vez).
+    fn items(&mut self, dir: &Path) -> std::rc::Rc<Vec<(String, PathBuf, bool)>> {
+        self.listing.entry(dir.to_path_buf()).or_insert_with(|| std::rc::Rc::new(list(dir))).clone()
     }
 
     /// Pasta em que se está (a última coluna).
@@ -130,6 +140,8 @@ impl FileBrowser {
     }
 
     fn set_root(&mut self, p: PathBuf) {
+        // Trocar de lugar relê as pastas (algo pode ter mudado fora daqui).
+        self.listing.clear();
         self.columns = vec![p];
         self.scroll = vec![0.0];
         self.selected = None;
@@ -276,7 +288,7 @@ impl Ui<'_> {
         let mut click: Option<(usize, PathBuf, bool, bool)> = None;
         for (ci, dir) in cols.iter().enumerate().skip(first) {
             let x = area_x + (ci - first) as f32 * COL_W;
-            let items = list(dir);
+            let items = fb.items(dir);
             let r = Rect::new(x, body.y, COL_W, body.h);
             let mut off = fb.scroll.get(ci).copied().unwrap_or(0.0);
             let inner = self.scroll_area(r, &mut off, items.len() as f32 * ROW, ROW);
@@ -324,17 +336,42 @@ impl Ui<'_> {
         if let Some(e) = fb.error.clone() {
             self.fonts.draw(self.c, &e, sx + 18.0, by - 6.0, 11.0, true, rgba(190, 40, 40, 255));
         }
+        // Esc com a pasta nova sendo nomeada só desiste dela (não fecha a folha).
+        let mut esc_used = false;
         if fb.mode == Mode::Save {
             match fb.new_folder.clone() {
                 Some(mut n) => {
-                    let (_, enter) = self.text_field_in(Rect::new(sx + 18.0, by, 160.0, 22.0), &mut n, false);
-                    if enter && !n.trim().is_empty() {
-                        let p = fb.dir().join(n.trim());
+                    // O campo pega o teclado assim que aparece (senão o que se digita ia
+                    // para o "Salvar como:" e o Enter salvava o arquivo).
+                    let first = std::mem::take(&mut fb.new_folder_first);
+                    // Como no Mac: o nome padrão vem selecionado; digitar (ou apagar) troca tudo.
+                    if fb.new_folder_fresh && (!self.typed().is_empty() || self.keys().iter().any(|k| matches!(k.key, Key::Backspace | Key::Delete))) {
+                        n.clear();
+                        fb.new_folder_fresh = false;
+                    }
+                    let fr = Rect::new(sx + 18.0, by, 160.0, 22.0);
+                    let (_, enter) = self.text_field_in(fr, &mut n, first);
+                    if fb.new_folder_fresh {
+                        let tw = self.fonts.measure(&n, (fr.h * 0.62).min(13.0), false);
+                        self.c.fill_rect(fr.x + 3.0, fr.y + 3.0, tw + 2.0, fr.h - 6.0, &solid(with_alpha(self.theme.accent, 0.3)));
+                    }
+                    let esc = self.keys().iter().any(|k| k.key == Key::Escape);
+                    if esc {
+                        fb.new_folder = None;
+                        fb.first = true;
+                        esc_used = true;
+                    } else if enter && !n.trim().is_empty() {
+                        let parent = fb.dir();
+                        let p = parent.join(n.trim());
                         match std::fs::create_dir(&p) {
                             Ok(()) => {
+                                fb.listing.remove(&parent);
                                 fb.columns.push(p);
                                 fb.scroll.push(0.0);
                                 fb.new_folder = None;
+                                fb.error = None;
+                                // De volta ao nome do arquivo, para salvar na pasta nova.
+                                fb.first = true;
                             }
                             Err(e) => {
                                 fb.error = Some(tr!("Não foi possível criar a pasta: {}", e));
@@ -350,6 +387,8 @@ impl Ui<'_> {
                     self.area(Rect::new(sx + 18.0, by, 110.0, 24.0), |ui| clicked = ui.button(tr!("Nova Pasta")));
                     if clicked {
                         fb.new_folder = Some(tr!("pasta sem título").into());
+                        fb.new_folder_first = true;
+                        fb.new_folder_fresh = true;
                     }
                 }
             }
@@ -363,7 +402,7 @@ impl Ui<'_> {
         self.area(Rect::new(sx + sw - 220.0, by, 95.0, 24.0), |ui| cancel = ui.button(tr!("Cancelar")));
         self.area(Rect::new(sx + sw - 115.0, by, 97.0, 24.0), |ui| ok = ui.default_button(ok_label));
         let keys: Vec<Key> = self.keys().iter().map(|k| k.key).collect();
-        if keys.contains(&Key::Escape) && fb.new_folder.is_none() {
+        if keys.contains(&Key::Escape) && fb.new_folder.is_none() && !esc_used {
             cancel = true;
         }
         if keys.contains(&Key::Enter) && fb.mode != Mode::Save {
