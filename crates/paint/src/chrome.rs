@@ -783,12 +783,86 @@ fn icon_shadow(fonts: &Fonts, icon: icons::Icon, letter: Option<char>, size: f32
     Some((c, pad))
 }
 
-pub fn dock(fonts: &Fonts, theme: &Theme, items: &[DockItem], layout: &DockLayout, hover: Option<usize>, scale: f32) -> Option<Canvas> {
-    let mut c = Canvas::new(layout.width as f32, layout.height as f32, scale)?;
-    let (sx, sy, sw, sh) = layout.shelf;
+/// Onde cada peça do Dock vai, em coordenadas lógicas relativas ao Dock. O
+/// compositor desenha cada peça como uma textura própria (a GPU só muda posição
+/// e tamanho na ampliação); [`dock`] junta as mesmas peças num canvas só.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DockScene {
+    /// Retângulo da textura da prateleira (com as bordas finas em volta).
+    pub shelf: (f32, f32, f32, f32),
+    /// (item, x, y, lado) do quadrado do desenho de cada ícone (sem a margem da sombra).
+    pub icons: Vec<(usize, f32, f32, f32)>,
+    /// Canto de cada divisória.
+    pub separators: Vec<(f32, f32)>,
+    /// Canto de cada indicador de app aberto.
+    pub indicators: Vec<(f32, f32)>,
+    /// O nome sob o mouse: (item, canto da textura do nome).
+    pub label: Option<(usize, f32, f32)>,
+}
 
-    // Prateleira de vidro fosco: retângulo translúcido com bordas claras.
-    // Vidro branco translúcido com listras finas, encostado na borda de baixo.
+/// Tamanho do nome do ícone sob o mouse e a margem da textura dele.
+const DOCK_LABEL_PX: f32 = 14.0;
+const DOCK_LABEL_PAD: f32 = 4.0;
+
+/// Calcula a cena do Dock (só contas, nada desenhado).
+pub fn dock_scene(fonts: &Fonts, items: &[DockItem], layout: &DockLayout, hover: Option<usize>) -> DockScene {
+    let (sx, sy, sw, sh) = layout.shelf;
+    let side = layout.side;
+    // A prateleira e as bordas dela, sem passar das bordas do Dock.
+    let (x0, y0) = ((sx - 2.0).max(0.0), (sy - 2.0).max(0.0));
+    let (x1, y1) = ((sx + sw + 2.0).min(layout.width as f32), (sy + sh + 2.0).min(layout.height as f32));
+    let mut sc = DockScene { shelf: (x0, y0, x1 - x0, y1 - y0), icons: Vec::new(), separators: Vec::new(), indicators: Vec::new(), label: None };
+    for (i, (it, &(x, y, s))) in items.iter().zip(&layout.items).enumerate() {
+        if it.separator_before {
+            sc.separators.push(if side.vertical() { (sx, y - DOCK_GAP / 2.0 - DOCK_SEP / 2.0) } else { (x - DOCK_GAP / 2.0 - DOCK_SEP / 2.0, sy) });
+        }
+        // App abrindo: o ícone pula para longe da borda (até o fim do Dock, no máximo).
+        let (x, y) = match side {
+            DockSide::Bottom => (x, y - it.bounce.clamp(0.0, (y - 2.0).max(0.0))),
+            DockSide::Left => (x + it.bounce.clamp(0.0, (layout.width as f32 - x - s - 2.0).max(0.0)), y),
+            DockSide::Right => (x - it.bounce.clamp(0.0, (x - 2.0).max(0.0)), y),
+        };
+        if !it.thumbnail {
+            // O desenho dos ícones tem margem dentro do quadro; no Dock ele cresce
+            // para encher a vaga (como os ícones do Tiger, quase encostados).
+            // Cresce para o lado da borda da tela (a margem de baixo do desenho fica
+            // sobre o espaço do indicador), para o ícone caber na prateleira.
+            let k = 1.14;
+            let (dx, dy) = match side {
+                DockSide::Bottom => (s * (k - 1.0) / 2.0, s * (k - 1.0) * 0.1),
+                DockSide::Left => (s * (k - 1.0) * 0.7, s * (k - 1.0) / 2.0),
+                DockSide::Right => (s * (k - 1.0) * 0.3, s * (k - 1.0) / 2.0),
+            };
+            sc.icons.push((i, x - dx, y - dy, s * k));
+        }
+        if it.running {
+            // Indicador de app aberto: pequeno triângulo escuro junto à borda da tela.
+            sc.indicators.push(match side {
+                DockSide::Bottom => (x + s / 2.0 - 5.0, layout.height as f32 - 7.0),
+                DockSide::Left => (0.0, y + s / 2.0 - 5.0),
+                DockSide::Right => (layout.width as f32 - 7.0, y + s / 2.0 - 5.0),
+            });
+        }
+        if hover == Some(i) {
+            let tw = fonts.measure(&it.label, DOCK_LABEL_PX, true);
+            let (lx, ly) = match side {
+                DockSide::Bottom => ((x + s / 2.0 - tw / 2.0).clamp(10.0, layout.width as f32 - tw - 10.0), (y - 8.0).max(16.0)),
+                // Nas laterais, o nome fica ao lado do ícone.
+                DockSide::Left => (x + s + 10.0, y + s / 2.0 + 5.0),
+                DockSide::Right => ((x - 10.0 - tw).max(4.0), y + s / 2.0 + 5.0),
+            };
+            sc.label = Some((i, lx - DOCK_LABEL_PAD, ly - DOCK_LABEL_PX - DOCK_LABEL_PAD));
+        }
+    }
+    sc
+}
+
+/// A prateleira de vidro do Dock, do tamanho de `DockScene::shelf`.
+pub fn dock_shelf(theme: &Theme, layout: &DockLayout, scene: &DockScene, scale: f32) -> Option<Canvas> {
+    let (ox, oy, w, h) = scene.shelf;
+    let mut c = Canvas::new(w.max(1.0), h.max(1.0), scale)?;
+    let (sx, sy, sw, sh) = layout.shelf;
+    let (sx, sy) = (sx - ox, sy - oy);
     let side = layout.side;
     // Cantos arredondados só do lado de dentro (longe da borda da tela).
     let shelf = match side {
@@ -801,6 +875,7 @@ pub fn dock(fonts: &Fonts, theme: &Theme, items: &[DockItem], layout: &DockLayou
         // de parede), liso e um pouco mais claro em cima.
         c.fill(shelf.clone(), &vgrad(sy, sy + sh, &[(0.0, rgba(170, 178, 216, 222)), (1.0, rgba(146, 156, 202, 228))]));
     } else {
+        // Vidro branco translúcido com listras finas, encostado na borda de baixo.
         c.fill(shelf.clone(), &vgrad(sy, sy + sh, &[(0.0, rgba(255, 255, 255, 120)), (0.5, rgba(240, 244, 250, 100)), (1.0, rgba(225, 232, 242, 112))]));
         c.pinstripes(sx + 1.0, sy + 1.0, sw - 2.0, sh - 1.0, rgba(255, 255, 255, 0), rgba(255, 255, 255, 34));
     }
@@ -817,79 +892,97 @@ pub fn dock(fonts: &Fonts, theme: &Theme, items: &[DockItem], layout: &DockLayou
         DockSide::Left => c.vline(sx + sw, sy, sh, rgba(0, 0, 0, 50)),
         DockSide::Right => c.vline(sx - 1.0, sy, sh, rgba(0, 0, 0, 50)),
     }
+    Some(c)
+}
 
-    for (i, (it, (x, y, s))) in items.iter().zip(&layout.items).enumerate() {
-        if it.separator_before {
-            if side.vertical() {
-                let ly = y - DOCK_GAP / 2.0 - DOCK_SEP / 2.0;
-                c.hline(sx, ly, sw, rgba(0, 0, 0, 70));
-                c.hline(sx, ly + 1.0, sw, rgba(255, 255, 255, 190));
-            } else {
-                let lx = x - DOCK_GAP / 2.0 - DOCK_SEP / 2.0;
-                c.vline(lx, sy, sh, rgba(0, 0, 0, 70));
-                c.vline(lx + 1.0, sy, sh, rgba(255, 255, 255, 190));
-            }
+/// Divisória entre os apps e o resto (comprimento = espessura da prateleira).
+pub fn dock_separator(side: DockSide, len: f32, scale: f32) -> Option<Canvas> {
+    let mut c = if side.vertical() { Canvas::new(len.max(1.0), 2.0, scale)? } else { Canvas::new(2.0, len.max(1.0), scale)? };
+    if side.vertical() {
+        c.hline(0.0, 0.0, len, rgba(0, 0, 0, 70));
+        c.hline(0.0, 1.0, len, rgba(255, 255, 255, 190));
+    } else {
+        c.vline(0.0, 0.0, len, rgba(0, 0, 0, 70));
+        c.vline(1.0, 0.0, len, rgba(255, 255, 255, 190));
+    }
+    Some(c)
+}
+
+/// Indicador de app aberto (10 × 7 ou 7 × 10, apontando para longe da borda).
+pub fn dock_indicator(side: DockSide, scale: f32) -> Option<Canvas> {
+    let mut c = if side.vertical() { Canvas::new(7.0, 10.0, scale)? } else { Canvas::new(10.0, 7.0, scale)? };
+    let mut pb = tiny_skia::PathBuilder::new();
+    match side {
+        DockSide::Bottom => {
+            pb.move_to(1.0, 5.5);
+            pb.line_to(9.0, 5.5);
+            pb.line_to(5.0, 1.0);
         }
-        // App abrindo: o ícone pula para longe da borda (até o fim do Dock, no máximo).
-        let (x, y) = match side {
-            DockSide::Bottom => (x, &(y - it.bounce.clamp(0.0, (y - 2.0).max(0.0)))),
-            DockSide::Left => (&(x + it.bounce.clamp(0.0, (layout.width as f32 - x - s - 2.0).max(0.0))), y),
-            DockSide::Right => (&(x - it.bounce.clamp(0.0, (x - 2.0).max(0.0))), y),
-        };
-        if !it.thumbnail {
-            // O desenho dos ícones tem margem dentro do quadro; no Dock ele cresce
-            // para encher a vaga (como os ícones do Tiger, quase encostados).
-            // Cresce para o lado da borda da tela (a margem de baixo do desenho fica
-            // sobre o espaço do indicador), para o ícone caber na prateleira.
-            let k = 1.14;
-            let (dx, dy) = match side {
-                DockSide::Bottom => (s * (k - 1.0) / 2.0, s * (k - 1.0) * 0.1),
-                DockSide::Left => (s * (k - 1.0) * 0.7, s * (k - 1.0) / 2.0),
-                DockSide::Right => (s * (k - 1.0) * 0.3, s * (k - 1.0) / 2.0),
-            };
-            let (ix, iy, is) = (*x - dx, *y - dy, *s * k);
-            if let Some((sh, pad)) = icon_shadow(fonts, it.icon, it.letter, is, scale) {
-                c.draw_canvas(&sh, ix - pad, iy - pad + is * 0.035);
-            }
-            // Os ícones novos vêm prontos do cache do glove-paint (a ampliação não redesenha).
-            icons::draw_bare(&mut c, fonts, it.icon, ix, iy, is, it.letter);
+        DockSide::Left => {
+            pb.move_to(1.5, 1.0);
+            pb.line_to(1.5, 9.0);
+            pb.line_to(6.0, 5.0);
         }
-        if it.running {
-            // Indicador de app aberto: pequeno triângulo escuro junto à borda da tela.
-            let mut pb = tiny_skia::PathBuilder::new();
-            match side {
-                DockSide::Bottom => {
-                    let (cx, by) = (x + s / 2.0, layout.height as f32 - 1.5);
-                    pb.move_to(cx - 4.0, by);
-                    pb.line_to(cx + 4.0, by);
-                    pb.line_to(cx, by - 4.5);
-                }
-                DockSide::Left => {
-                    let cy = y + s / 2.0;
-                    pb.move_to(1.5, cy - 4.0);
-                    pb.line_to(1.5, cy + 4.0);
-                    pb.line_to(6.0, cy);
-                }
-                DockSide::Right => {
-                    let (cy, bx) = (y + s / 2.0, layout.width as f32 - 1.5);
-                    pb.move_to(bx, cy - 4.0);
-                    pb.line_to(bx, cy + 4.0);
-                    pb.line_to(bx - 4.5, cy);
-                }
-            }
-            pb.close();
-            c.fill(pb.finish(), &solid(rgba(15, 20, 30, 220)));
+        DockSide::Right => {
+            pb.move_to(5.5, 1.0);
+            pb.line_to(5.5, 9.0);
+            pb.line_to(1.0, 5.0);
         }
-        if hover == Some(i) {
-            let px = 14.0;
-            let tw = fonts.measure(&it.label, px, true);
-            let (lx, ly) = match side {
-                DockSide::Bottom => ((x + s / 2.0 - tw / 2.0).clamp(10.0, layout.width as f32 - tw - 10.0), (y - 8.0).max(16.0)),
-                // Nas laterais, o nome fica ao lado do ícone.
-                DockSide::Left => (x + s + 10.0, y + s / 2.0 + 5.0),
-                DockSide::Right => ((x - 10.0 - tw).max(4.0), y + s / 2.0 + 5.0),
-            };
-            outlined_label(fonts, &mut c, &it.label, lx, ly, px);
+    }
+    pb.close();
+    c.fill(pb.finish(), &solid(rgba(15, 20, 30, 220)));
+    Some(c)
+}
+
+/// O nome do ícone sob o mouse, branco com contorno escuro.
+pub fn dock_label(fonts: &Fonts, text: &str, scale: f32) -> Option<Canvas> {
+    let tw = fonts.measure(text, DOCK_LABEL_PX, true);
+    let mut c = Canvas::new(tw + DOCK_LABEL_PAD * 2.0 + 1.0, DOCK_LABEL_PX + DOCK_LABEL_PAD * 2.0 + 2.0, scale)?;
+    outlined_label(fonts, &mut c, text, DOCK_LABEL_PAD, DOCK_LABEL_PAD + DOCK_LABEL_PX, DOCK_LABEL_PX);
+    Some(c)
+}
+
+/// O ícone com a sombra no formato dele, para um quadrado de lado `side`.
+/// Devolve o canvas e a margem (o desenho começa em (margem, margem)).
+pub fn dock_icon(fonts: &Fonts, icon: Icon, letter: Option<char>, side: f32, scale: f32) -> Option<(Canvas, f32)> {
+    let pad = (side * 0.08).max(3.0);
+    let mut c = Canvas::new(side + 2.0 * pad, side + 2.0 * pad + (side * 0.035).ceil(), scale)?;
+    if let Some((sh, spad)) = icon_shadow(fonts, icon, letter, side, scale) {
+        c.draw_canvas(&sh, pad - spad, pad - spad + side * 0.035);
+    }
+    icons::draw_bare(&mut c, fonts, icon, pad, pad, side, letter);
+    Some((c, pad))
+}
+
+/// O Dock inteiro num canvas (as mesmas peças que o compositor junta na GPU).
+pub fn dock(fonts: &Fonts, theme: &Theme, items: &[DockItem], layout: &DockLayout, hover: Option<usize>, scale: f32) -> Option<Canvas> {
+    let mut c = Canvas::new(layout.width as f32, layout.height as f32, scale)?;
+    let scene = dock_scene(fonts, items, layout, hover);
+    if let Some(sh) = dock_shelf(theme, layout, &scene, scale) {
+        c.draw_canvas(&sh, scene.shelf.0, scene.shelf.1);
+    }
+    let thick = if layout.side.vertical() { layout.shelf.2 } else { layout.shelf.3 };
+    if let Some(sep) = dock_separator(layout.side, thick, scale) {
+        for &(x, y) in &scene.separators {
+            c.draw_canvas(&sep, x, y);
+        }
+    }
+    for &(i, x, y, s) in &scene.icons {
+        let it = &items[i];
+        if let Some((sh, pad)) = icon_shadow(fonts, it.icon, it.letter, s, scale) {
+            c.draw_canvas(&sh, x - pad, y - pad + s * 0.035);
+        }
+        // Os ícones novos vêm prontos do cache do glove-paint (a ampliação não redesenha).
+        icons::draw_bare(&mut c, fonts, it.icon, x, y, s, it.letter);
+    }
+    if let Some(ind) = dock_indicator(layout.side, scale) {
+        for &(x, y) in &scene.indicators {
+            c.draw_canvas(&ind, x, y);
+        }
+    }
+    if let Some((i, x, y)) = scene.label {
+        if let Some(l) = dock_label(fonts, &items[i].label, scale) {
+            c.draw_canvas(&l, x, y);
         }
     }
     Some(c)
