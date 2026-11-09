@@ -832,6 +832,8 @@ pub enum Glyph {
     AlignLeft,
     AlignCenter,
     AlignRight,
+    /// Linhas todas da mesma largura (a última mais curta).
+    AlignJustify,
     /// Seta curva girando para a esquerda / direita.
     RotateLeft,
     RotateRight,
@@ -879,6 +881,13 @@ pub fn glyph(pm: &mut Canvas, g: Glyph, cx: f32, cy: f32, s: f32, color: Color) 
             pm.fill_rect(cx - h + s * 0.32, cy - h * 0.75, 1.0, s * 0.75 * 2.0, &ink);
             for i in 0..3 {
                 pm.fill_rect(cx - h + s * 0.08, cy - h * 0.5 + i as f32 * s * 0.22, s * 0.16, s * 0.12, &ink);
+            }
+        }
+        Glyph::AlignJustify => {
+            for i in 0..4 {
+                let y = (cy - h * 0.75 + i as f32 * h * 0.5).round() + 0.5;
+                let lw = if i == 3 { (s * 0.55).round() } else { s.round() };
+                pm.fill_rect((cx - h).round(), y - 0.5, lw, 1.0, &ink);
             }
         }
         Glyph::AlignLeft | Glyph::AlignCenter | Glyph::AlignRight => {
