@@ -839,6 +839,8 @@ pub enum Glyph {
     RotateRight,
     /// Gaveta lateral (miniaturas).
     Sidebar,
+    /// Lápis inclinado (desenhar por cima).
+    Pencil,
 }
 
 /// Desenha o glifo centrado em (cx, cy), num quadrado de `s` pontos.
@@ -875,6 +877,25 @@ pub fn glyph(pm: &mut Canvas, g: Glyph, cx: f32, cy: f32, s: f32, color: Color) 
             pb.line_to(tx + d * s * 0.08, ty + s * 0.1);
             pb.close();
             pm.fill(pb.finish(), &ink);
+        }
+        Glyph::Pencil => {
+            // Corpo inclinado, ponta embaixo à esquerda.
+            let (ax, ay) = (cx - h * 0.78, cy + h * 0.78);
+            let (bx, by) = (cx + h * 0.62, cy - h * 0.62);
+            let t = s * 0.16;
+            let mut pb = PathBuilder::new();
+            pb.move_to(ax + t * 1.9, ay - t * 0.5);
+            pb.line_to(bx + t * 0.7, by + t * 0.7);
+            pb.line_to(bx - t * 0.7, by - t * 0.7);
+            pb.line_to(ax + t * 0.5, ay - t * 1.9);
+            pb.close();
+            pm.stroke(pb.finish(), &ink, 1.0);
+            let mut tip = PathBuilder::new();
+            tip.move_to(ax, ay);
+            tip.line_to(ax + t * 1.9, ay - t * 0.5);
+            tip.line_to(ax + t * 0.5, ay - t * 1.9);
+            tip.close();
+            pm.fill(tip.finish(), &ink);
         }
         Glyph::Sidebar => {
             pm.stroke(rrect(cx - h + 0.5, cy - h * 0.75 + 0.5, s - 1.0, s * 0.75 * 2.0 - 1.0, 1.0), &ink, 1.0);

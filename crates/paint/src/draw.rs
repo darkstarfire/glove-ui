@@ -1123,6 +1123,18 @@ impl Canvas {
         self.pm.fill_path(&p, paint, FillRule::Winding, t, Some(&mask));
     }
 
+    /// Traço de caneta: pontas e cantos arredondados (desenho à mão livre).
+    pub fn stroke_pen(&mut self, path: Option<Path>, paint: &Paint, width: f32) {
+        if let Some(p) = path {
+            if self.note_path(19, &p, paint, width, width + 1.0) || !self.path_visible(&p, width + 1.0) {
+                return;
+            }
+            let t = self.t();
+            let s = Stroke { width, line_cap: tiny_skia::LineCap::Round, line_join: tiny_skia::LineJoin::Round, ..Default::default() };
+            self.pm.stroke_path(&p, paint, &s, t, None);
+        }
+    }
+
     /// Traço com pontas arredondadas.
     pub fn stroke_round(&mut self, path: Option<Path>, paint: &Paint, width: f32) {
         if let Some(p) = path {

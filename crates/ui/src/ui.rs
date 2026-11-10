@@ -696,6 +696,17 @@ impl<'a> Ui<'a> {
         self.mem.glove_cmds.push(format!("SHOT\t300\t{}\t2", open as u8));
     }
 
+    /// Põe um arquivo na área de transferência de um jeito que continua valendo
+    /// depois que o app fecha: no Glove, quem guarda é o compositor (uma imagem
+    /// PNG vai também como imagem, para colar num chat); fora dele, o próprio app.
+    pub fn copy_file_kept(&mut self, path: &std::path::Path) {
+        if std::env::var_os("GLOVE_MENU_SOCKET").is_some_and(|s| !s.is_empty()) {
+            self.mem.glove_cmds.push(format!("COPIAR\t{}", path.display()));
+        } else {
+            self.copy_files(&[path.to_path_buf()], false);
+        }
+    }
+
     /// O documento tem alterações não salvas: o Glove põe o ponto no botão de
     /// fechar (como no Mac). Só manda quando muda.
     pub fn set_edited(&mut self, on: bool) {
