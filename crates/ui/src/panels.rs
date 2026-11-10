@@ -1,5 +1,5 @@
-//! Painel de Fontes e Painel de Cores (como os da era): painéis flutuantes no
-//! canto da janela, que mudam a escolha na hora.
+//! Painel de Fontes e Painel de Cores (como os da era): painéis flutuantes que
+//! abrem no meio da janela, saem do lugar puxando pelo título e mudam a escolha na hora.
 
 use glove_config::tr;
 use glove_paint::{
@@ -9,6 +9,55 @@ use glove_paint::{
 };
 
 use crate::ui::{Rect, Ui};
+
+/// Onde o painel está e o arrasto pelo título.
+#[derive(Default)]
+pub struct PanelPlace {
+    /// Canto de cima à esquerda (None = ainda no meio da janela).
+    pos: Option<(f32, f32)>,
+    /// Puxando: distância do ponteiro ao canto.
+    grab: Option<(f32, f32)>,
+}
+
+impl PanelPlace {
+    /// Onde o painel aparece numa janela `w` × `h` (sem mexer).
+    fn rect(&self, w: f32, h: f32, pw: f32, ph: f32) -> Rect {
+        let (x, y) = self.pos.unwrap_or(((w - pw) / 2.0, (h - ph) / 2.0));
+        Rect::new(x.clamp(0.0, (w - pw).max(0.0)).round(), y.clamp(0.0, (h - 18.0).max(0.0)).round(), pw, ph)
+    }
+}
+
+const FONT_PANEL: (f32, f32) = (320.0, 300.0);
+const COLOR_PANEL: (f32, f32) = (250.0, 286.0);
+
+/// O retângulo do painel de `pw` × `ph`: no meio da janela até ser arrastado; puxar
+/// pela faixa do título muda o lugar (sem sair da janela).
+fn panel_rect(ui: &mut Ui, place: &mut PanelPlace, pw: f32, ph: f32) -> Rect {
+    let (w, h) = (ui.c.w, ui.c.h);
+    let (mut x, mut y) = place.pos.unwrap_or(((w - pw) / 2.0, (h - ph) / 2.0));
+    let title = Rect::new(x + 20.0, y, pw - 20.0, 18.0);
+    let hit = ui.hit(title);
+    let pt = ui.pointer();
+    if hit.pressed {
+        place.grab = Some((pt.0 - x, pt.1 - y));
+    }
+    if let Some((gx, gy)) = place.grab {
+        if ui.mouse_down() {
+            x = pt.0 - gx;
+            y = pt.1 - gy;
+            place.pos = Some((x, y));
+        } else {
+            place.grab = None;
+        }
+    }
+    // Sempre dentro da janela (a faixa do título à vista).
+    x = x.clamp(0.0, (w - pw).max(0.0));
+    y = y.clamp(0.0, (h - 18.0).max(0.0));
+    if place.pos.is_some() {
+        place.pos = Some((x, y));
+    }
+    Rect::new(x.round(), y.round(), pw, ph)
+}
 
 /// Moldura do painel: faixa de título fina com o botão de fechar. Devolve o corpo
 /// e se o fechar foi clicado.
@@ -39,35 +88,51 @@ pub struct FontPanel {
     filter: String,
     scroll: f32,
     preview: Option<(String, Fonts)>,
+    place: PanelPlace,
 }
 
 const SIZES: [f32; 12] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 24.0, 36.0, 48.0, 64.0];
 
 /// Famílias instaladas (fc-list), sem repetir e em ordem.
 pub fn installed_families() -> Vec<String> {
-    let out = std::process::Command::new("fc-list").args([":", "family"]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
-    let mut v: Vec<String> = out.lines().map(|l| l.split(',').next().unwrap_or("").trim().to_string()).filter(|f| !f.is_empty()).collect();
+    // Só TrueType e OpenType (CFF): as Type 1 antigas (.pfb) não são desenhadas.
+    let out = std::process::Command::new("fc-list").args([":", "family", "fontformat"]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let out: String = out
+        .lines()
+        .filter_map(|l| {
+            let (fam, fmt) = l.rsplit_once(":fontformat=")?;
+            matches!(fmt.trim(), "TrueType" | "CFF").then(|| format!("{fam}\n"))
+        })
+        .collect();
+    // O fc-list escapa "-", "\\" e ":" com barra invertida (all\\-the\\-icons).
+    let mut v: Vec<String> = out.lines().map(|l| l.split(',').next().unwrap_or("").trim().replace("\\-", "-").replace("\\:", ":").replace("\\\\", "\\")).filter(|f| !f.is_empty()).collect();
     v.sort_by_key(|f| f.to_lowercase());
     v.dedup();
     v
 }
 
 impl FontPanel {
+    /// Onde o painel está (aberto) numa janela `w` × `h`: o app reserva a área
+    /// (`Ui::reserve`) para o clique não atravessar para o que está embaixo.
+    pub fn rect(&self, w: f32, h: f32) -> Option<Rect> {
+        self.open.then(|| self.place.rect(w, h, FONT_PANEL.0, FONT_PANEL.1))
+    }
+
     pub fn new(family: &str, size: f32) -> Self {
-        Self { open: false, family: family.to_string(), size, families: None, filter: String::new(), scroll: 0.0, preview: None }
+        Self { open: false, family: family.to_string(), size, families: None, filter: String::new(), scroll: 0.0, preview: None, place: PanelPlace::default() }
     }
 }
 
 impl Ui<'_> {
-    /// Painel de Fontes no canto de cima à direita. Devolve verdadeiro quando a
+    /// Painel de Fontes (no meio da janela, até ser arrastado). Devolve verdadeiro quando a
     /// família ou o tamanho mudam (o app aplica na hora).
     pub fn font_panel(&mut self, p: &mut FontPanel) -> bool {
         if !p.open {
             return false;
         }
         let families = p.families.get_or_insert_with(installed_families).clone();
-        let (pw, ph) = (320.0, 300.0);
-        let r = Rect::new((self.c.w - pw - 10.0).max(0.0), 30.0, pw, ph);
+        let (pw, ph) = FONT_PANEL;
+        let r = panel_rect(self, &mut p.place, pw, ph);
         let (body, close) = panel_frame(self, r, tr!("Fontes"));
         if close {
             p.open = false;
@@ -146,6 +211,7 @@ pub struct ColorPanel {
     hsv: (f32, f32, f32),
     wheel: Option<(f32, Pixmap)>,
     dragging: bool,
+    place: PanelPlace,
 }
 
 /// HSV (h 0..360, s e v 0..1) → RGB.
@@ -192,8 +258,13 @@ const SWATCHES: [(u8, u8, u8); 16] = [
 ];
 
 impl ColorPanel {
+    /// Como `FontPanel::rect`.
+    pub fn rect(&self, w: f32, h: f32) -> Option<Rect> {
+        self.open.then(|| self.place.rect(w, h, COLOR_PANEL.0, COLOR_PANEL.1))
+    }
+
     pub fn new(rgb: (u8, u8, u8)) -> Self {
-        Self { open: false, rgb, hsv: rgb_to_hsv(rgb), wheel: None, dragging: false }
+        Self { open: false, rgb, hsv: rgb_to_hsv(rgb), wheel: None, dragging: false, place: PanelPlace::default() }
     }
 
     pub fn set(&mut self, rgb: (u8, u8, u8)) {
@@ -228,13 +299,13 @@ fn wheel_pixmap(d: u32) -> Option<Pixmap> {
 }
 
 impl Ui<'_> {
-    /// Painel de Cores no canto de cima à direita. Devolve verdadeiro quando a cor muda.
+    /// Painel de Cores (no meio da janela, até ser arrastado). Devolve verdadeiro quando a cor muda.
     pub fn color_panel(&mut self, p: &mut ColorPanel) -> bool {
         if !p.open {
             return false;
         }
-        let (pw, ph) = (250.0, 286.0);
-        let r = Rect::new((self.c.w - pw - 10.0).max(0.0), 30.0, pw, ph);
+        let (pw, ph) = COLOR_PANEL;
+        let r = panel_rect(self, &mut p.place, pw, ph);
         let (body, close) = panel_frame(self, r, tr!("Cores"));
         if close {
             p.open = false;
