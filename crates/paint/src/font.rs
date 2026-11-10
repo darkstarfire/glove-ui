@@ -79,6 +79,8 @@ pub struct Fonts {
     /// Fontes reserva (ícones Nerd Font, símbolos), lidas só na primeira vez
     /// que aparece um caractere que a fonte principal não tem.
     fallbacks: std::cell::OnceCell<Vec<(String, std::cell::OnceCell<Option<FontVec>>)>>,
+    /// Número único deste conjunto de fontes (o redesenho parcial compara textos por ele).
+    id: u64,
 }
 
 impl Fonts {
@@ -90,7 +92,9 @@ impl Fonts {
 }
 
 fn new_fonts(regular: FontVec, bold: Option<FontVec>) -> Fonts {
-    Fonts { regular, bold, cache: RefCell::new(HashMap::new()), fallbacks: std::cell::OnceCell::new() }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Fonts { regular, bold, cache: RefCell::new(HashMap::new()), fallbacks: std::cell::OnceCell::new(), id }
 }
 
 /// Arquivo de uma família de fonte instalada (via fontconfig).
@@ -301,6 +305,25 @@ impl Fonts {
 
     /// Desenha `text` (coordenadas lógicas) com a linha de base em `baseline`.
     pub fn draw(&self, c: &mut Canvas, text: &str, x: f32, baseline: f32, px: f32, bold: bool, color: Color) {
+        if text.is_empty() {
+            return;
+        }
+        if c.recording() {
+            let mut k = crate::draw::Fp::new(17);
+            k.u(self.id);
+            k.bytes(text.as_bytes());
+            for v in [x, baseline, px] {
+                k.f(v);
+            }
+            k.u(bold as u64);
+            k.color(color);
+            // Caixa com folga para as letras que passam da medida (itálico, acentos).
+            let w = self.measure(text, px, bold);
+            let r = c.px_box(x - px * 0.5, baseline - px * 1.4, w + px, px * 2.0, 1.0);
+            if c.note(r, k.finish()) {
+                return;
+            }
+        }
         let s = c.scale;
         let ppx = px * s;
         let f = self.font(bold);

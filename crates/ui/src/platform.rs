@@ -190,6 +190,11 @@ struct Win {
     probe: Option<Vec<[u32; 4]>>,
     /// Canvas reaproveitado enquanto o tamanho/escala não mudam.
     canvas: Option<Canvas>,
+    /// Operações de desenho do quadro que está no canvas (redesenho parcial).
+    ops: Vec<glove_paint::draw::Op>,
+    ops_valid: bool,
+    /// Áreas pintadas fora das operações anotadas (animações): entram no próximo quadro.
+    forced: Vec<[i32; 4]>,
     /// Já há um timer de "acordar" pendente (ui.wake_after).
     wake_pending: bool,
     /// Mudança de tamanho pedida pelo app, animada: (de, para, início, duração).
@@ -263,6 +268,9 @@ impl Shells {
             silent: Default::default(),
             probe: None,
             canvas: None,
+            ops: Vec::new(),
+            ops_valid: false,
+            forced: Vec::new(),
             wake_pending: false,
             size_anim: None,
             shown: false,
@@ -470,6 +478,17 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
 
 /// União dos retângulos lógicos em pixels físicos, com folga para a
 /// suavização das bordas.
+/// GLOVE_FULL_REDRAW=1: o jeito antigo (cada quadro pintado inteiro, sem anotar).
+fn classic_redraw() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("GLOVE_FULL_REDRAW").is_some())
+}
+
+fn check_damage() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("GLOVE_CHECK_DAMAGE").is_some())
+}
+
 fn px_union(rects: &[crate::ui::Rect], scale: f32) -> [i32; 4] {
     let mut u = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
     for r in rects {
@@ -644,6 +663,16 @@ impl<A: App> Runner<A> {
             && !self.w.input.has_events()
             && !self.w.input.moved;
         self.w.anim_dirty = false;
+        // Com o quadro anterior anotado e o mesmo canvas: redesenho parcial. Sem
+        // isso (janela nova, tamanho novo), pinta tudo de uma vez, já anotando.
+        let noted = !partial && !classic_redraw();
+        if noted && self.w.ops_valid {
+            let scale = if self.w.viewport.is_some() { self.w.scale } else { self.w.int_scale as f64 } as f32;
+            if self.w.canvas.as_ref().is_some_and(|c| c.w == self.w.width as f32 && c.h == self.w.height as f32 && c.scale == scale) {
+                self.draw_noted(t0);
+                return;
+            }
+        }
         // Até 3 passadas seguidas se a interface pedir (ex.: pop-up que acabou de abrir).
         for pass in 0..3 {
             self.w.dirty = false;
@@ -654,11 +683,12 @@ impl<A: App> Runner<A> {
             partial &= reuse.is_some();
             let Some(mut canvas) = reuse.or_else(|| Canvas::new(self.w.width as f32, self.w.height as f32, scale)) else { return };
             let region = partial.then(|| px_union(&anim_rects, scale));
-            canvas.set_clip(region);
-            if !self.app.paints_background() {
-                canvas.clear(self.theme.body_a);
-                canvas.pinstripes(0.0, 0.0, self.w.width as f32, self.w.height as f32, self.theme.body_a, self.theme.body_b);
+            canvas.set_clip(None);
+            canvas.set_region(region);
+            if noted {
+                canvas.start_record(false);
             }
+            self.background(&mut canvas);
             let (redraw, close) = {
                 let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
                 self.app.ui(&mut ui);
@@ -667,7 +697,9 @@ impl<A: App> Runner<A> {
             // Um clique muda o estado no meio do quadro (ex.: o visor já foi
             // desenhado antes do botão). Mais uma passada, sem eventos, mostra
             // o resultado na hora. Só a última passada vai para a tela.
+            let ops = canvas.take_record();
             canvas.set_clip(None);
+            canvas.set_region(None);
             let resized = self.after_frame();
             let had_events = self.w.input.has_events();
             self.w.input.end_frame();
@@ -709,8 +741,195 @@ impl<A: App> Runner<A> {
                 let px: i32 = damage.iter().map(|r| (r[2] - r[0]) * (r[3] - r[1])).sum();
                 eprintln!("PROF desenho={:?} envio={:?} passadas={} parcial={} mudou={}px em {} áreas", t1 - t0, t1.elapsed(), pass + 1, region.is_some(), px, damage.len());
             }
+            // O que a animação pintou não está nas operações guardadas: o próximo
+            // quadro anotado repinta essa área. Um quadro inteiro invalida tudo.
+            match region {
+                Some(r) => self.w.forced.push(r),
+                None => {
+                    self.w.ops_valid = noted;
+                    self.w.ops = ops;
+                    self.w.forced.clear();
+                }
+            }
             self.w.canvas = Some(canvas);
             break;
+        }
+    }
+
+    /// Fundo listrado da janela (antes do app, se ele não pinta o próprio).
+    fn background(&self, canvas: &mut Canvas) {
+        if !self.app.paints_background() {
+            canvas.clear(self.theme.body_a);
+            canvas.pinstripes(0.0, 0.0, self.w.width as f32, self.w.height as f32, self.theme.body_a, self.theme.body_b);
+        }
+    }
+
+    /// Quadro com redesenho parcial: primeiro o app roda só anotando o que
+    /// desenharia (sem pintar nada, e quantas passadas precisar); depois, onde a
+    /// lista de operações difere da do quadro anterior, roda de novo pintando só
+    /// ali. Vale para todo app, sem ele precisar dizer o que mudou.
+    fn draw_noted(&mut self, t0: std::time::Instant) {
+        let mut ops = Vec::new();
+        let mut passes = 0;
+        let mut first_events = false;
+        for pass in 0..3 {
+            self.w.dirty = false;
+            self.w.mem.anim_rects.clear();
+            self.w.mem.anim_full = false;
+            let scale = if self.w.viewport.is_some() { self.w.scale } else { self.w.int_scale as f64 } as f32;
+            let reuse = self.w.canvas.take().filter(|c| c.w == self.w.width as f32 && c.h == self.w.height as f32 && c.scale == scale);
+            if reuse.is_none() {
+                self.w.ops_valid = false;
+            }
+            let Some(mut canvas) = reuse.or_else(|| Canvas::new(self.w.width as f32, self.w.height as f32, scale)) else { return };
+            canvas.set_clip(None);
+            canvas.set_region(None);
+            canvas.start_record(true);
+            self.background(&mut canvas);
+            let (redraw, close) = {
+                let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
+                self.app.ui(&mut ui);
+                ui.finish()
+            };
+            ops = canvas.take_record();
+            canvas.set_clip(None);
+            self.w.canvas = Some(canvas);
+            let resized = self.after_frame();
+            let had_events = self.w.input.has_events();
+            if pass == 0 {
+                first_events = had_events;
+            }
+            self.w.input.end_frame();
+            if close {
+                self.close_current();
+                return;
+            }
+            passes = pass + 1;
+            let settled = std::mem::take(&mut self.w.mem.settled);
+            if (redraw || (had_events && !settled) || resized) && pass < 2 {
+                self.w.dirty = true;
+                continue;
+            }
+            break;
+        }
+        let t1 = std::time::Instant::now();
+        let Some(mut canvas) = self.w.canvas.take() else { return };
+        // O tamanho pode ter mudado na última passada.
+        if canvas.w != self.w.width as f32 || canvas.h != self.w.height as f32 {
+            self.w.ops_valid = false;
+            self.w.dirty = true;
+        }
+        let (pw, ph) = (canvas.px_width() as i32, canvas.px_height() as i32);
+        let full = [0, 0, pw, ph];
+        let mut rects = if self.w.ops_valid { glove_paint::draw::diff_ops(&self.w.ops, &ops) } else { vec![full] };
+        rects.append(&mut self.w.forced);
+        let clamp = |r: [i32; 4]| [r[0].max(0), r[1].max(0), r[2].min(pw), r[3].min(ph)];
+        let rects = glove_paint::draw::merge_rects(rects.into_iter().map(clamp).collect(), 3);
+        self.w.ops = ops;
+        self.w.ops_valid = true;
+        let mut t2 = t1;
+        if !rects.is_empty() {
+            // Passadas só para pintar: os pedidos e o estado do quadro já vieram
+            // da passada anotada (o app vê o mesmo estado, sem eventos).
+            let keep = (std::mem::take(&mut self.w.mem.hover_rects), self.w.mem.pointer_sensitive, std::mem::take(&mut self.w.mem.anim_rects), self.w.mem.anim_full);
+            for r in &rects {
+                canvas.set_region(Some(*r));
+                self.background(&mut canvas);
+                let _ = {
+                    let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
+                    self.app.ui(&mut ui);
+                    ui.finish()
+                };
+                canvas.set_clip(None);
+                canvas.set_region(None);
+            }
+            t2 = std::time::Instant::now();
+            if check_damage() {
+                self.check_against_full(&canvas, &rects);
+            }
+            self.w.mem.drop_requests();
+            self.w.mem.settled = false;
+            (self.w.mem.hover_rects, self.w.mem.pointer_sensitive, self.w.mem.anim_rects, self.w.mem.anim_full) = keep;
+        }
+        let t3 = std::time::Instant::now();
+        let key = (canvas.px_width(), canvas.px_height(), canvas.scale.to_bits());
+        if key != self.w.prev_key {
+            self.w.prev.clear();
+            self.w.prev_key = key;
+        }
+        let damage = if rects.is_empty() {
+            Vec::new()
+        } else {
+            let u = rects.iter().fold([pw, ph, 0, 0], |u, r| [u[0].min(r[0]), u[1].min(r[1]), u[2].max(r[2]), u[3].max(r[3])]);
+            frame_damage(&mut self.w.prev, canvas.data(), pw, ph, u)
+        };
+        // Quadro só do mouse cruzando áreas, e nada mudou: essas áreas são mudas.
+        if let Some(crossed) = self.w.probe.take() {
+            if damage.is_empty() && passes == 1 && !first_events {
+                if self.w.silent.len() > 4096 {
+                    self.w.silent.clear();
+                }
+                self.w.silent.extend(crossed);
+            }
+        }
+        self.present(&canvas, &damage);
+        if std::mem::take(&mut self.w.need_commit) && damage.is_empty() {
+            self.w.window.commit();
+        }
+        if std::env::var_os("GLOVE_PROF").is_some() {
+            let px: i64 = rects.iter().map(|r| (r[2] - r[0]) as i64 * (r[3] - r[1]) as i64).sum();
+            let sent: i32 = damage.iter().map(|r| (r[2] - r[0]) * (r[3] - r[1])).sum();
+            eprintln!(
+                "PROF desenho={:?} (anotar={:?} ×{} pintar={:?} ×{}) envio={:?} pintou={}px de {} mudou={}px",
+                t2 - t0,
+                t1 - t0,
+                passes,
+                t2 - t1,
+                rects.len(),
+                t3.elapsed(),
+                px,
+                pw as i64 * ph as i64,
+                sent
+            );
+        }
+        self.w.canvas = Some(canvas);
+    }
+
+    /// GLOVE_CHECK_DAMAGE=1: pinta o quadro inteiro à parte e compara com o
+    /// parcial; avisa no terminal onde diferem (para achar desenho não anotado).
+    fn check_against_full(&mut self, canvas: &Canvas, rects: &[[i32; 4]]) {
+        let Some(mut full) = Canvas::new(canvas.w, canvas.h, canvas.scale) else { return };
+        self.background(&mut full);
+        {
+            let mut ui = Ui::new(&mut full, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
+            self.app.ui(&mut ui);
+            let _ = ui.finish();
+        }
+        self.w.mem.drop_requests();
+        let w = canvas.px_width() as usize;
+        let (a, b) = (canvas.data(), full.data());
+        let mut bad = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+        let mut n = 0;
+        for i in 0..a.len() / 4 {
+            // Diferença de 1 nível (arredondamento) não conta.
+            if a[i * 4..i * 4 + 4].iter().zip(&b[i * 4..i * 4 + 4]).any(|(p, q)| p.abs_diff(*q) > 2) {
+                let (x, y) = ((i % w) as i32, (i / w) as i32);
+                bad = [bad[0].min(x), bad[1].min(y), bad[2].max(x + 1), bad[3].max(y + 1)];
+                n += 1;
+            }
+        }
+        // Até uns poucos pixels soltos é do tiny-skia: traços finos e compridos saem
+        // com um pixel diferente conforme o recorte (ele os divide em pedaços).
+        if n > 12 {
+            eprintln!("CHECK redesenho parcial difere em {n} pixels, área {bad:?} (pintou {rects:?})");
+            // GLOVE_CHECK_DAMAGE=pasta: guarda as duas imagens para comparar.
+            if let Some(dir) = std::env::var_os("GLOVE_CHECK_DAMAGE").filter(|d| std::path::Path::new(d).is_dir()) {
+                let dir = std::path::PathBuf::from(dir);
+                let _ = canvas.pm.save_png(dir.join("parcial.png"));
+                let _ = full.pm.save_png(dir.join("inteiro.png"));
+            }
+        } else {
+            eprintln!("CHECK ok (pintou {rects:?})");
         }
     }
 

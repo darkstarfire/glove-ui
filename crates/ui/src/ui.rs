@@ -426,6 +426,26 @@ pub struct Memory {
 }
 
 impl Memory {
+    /// Esquece os pedidos que uma passada repetida (só para pintar, sem eventos)
+    /// deixou: a passada anterior, que valeu, já fez os mesmos.
+    pub(crate) fn drop_requests(&mut self) {
+        self.clip_out = None;
+        self.clip_files = None;
+        self.paste_files = false;
+        self.drag_out = None;
+        self.paste_req = None;
+        self.resize_req = false;
+        self.glove_cmds.clear();
+        self.minimize_req = false;
+        self.size_req = None;
+        self.wake_after = None;
+        self.move_req = false;
+        self.doc_font_req = None;
+        self.open_windows.clear();
+        self.redraw_all = false;
+        self.watch_req.clear();
+    }
+
     pub(crate) fn with_app_icon(icon: Icon) -> Self {
         Self { app_icon: Some(icon), ..Self::default() }
     }
@@ -987,9 +1007,10 @@ impl<'a> Ui<'a> {
                 None => return,
             },
         };
+        self.c.begin_sub(&mut sc, r.x, r.y);
         sc.clear(Color::TRANSPARENT);
         f(&mut sc, self.fonts);
-        self.c.draw_canvas(&sc, r.x, r.y);
+        self.c.end_sub(&mut sc, r.x, r.y);
         self.mem.scratch.insert(id, sc);
         self.mem.scratch_used.push(id);
     }
@@ -2639,6 +2660,7 @@ impl<'a> Ui<'a> {
                 None => return changed,
             },
         };
+        self.c.begin_sub(&mut sc, tr.x, tr.y);
         sc.clear(buf.paper.map(|(r, g, b)| rgba(r, g, b, 255)).unwrap_or(Color::WHITE));
         let (sel_a, sel_b) = buf.selection();
         let sel_color = if focused { self.theme.highlight } else { rgba(212, 212, 216, 255) };
@@ -2666,7 +2688,7 @@ impl<'a> Ui<'a> {
                 sc.fill_rect(cx.round(), y + 1.0, 1.0, lh - 2.0, &solid(ink()));
             }
         }
-        self.c.draw_canvas(&sc, tr.x, tr.y);
+        self.c.end_sub(&mut sc, tr.x, tr.y);
         self.mem.scratch.insert(id, sc);
         self.mem.scratch_used.push(id);
 
