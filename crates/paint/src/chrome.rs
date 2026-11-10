@@ -1186,6 +1186,32 @@ pub fn cursor_arrow(scale: f32) -> Option<Canvas> {
     Some(c)
 }
 
+/// Lado do cursor de redimensionar (o ponto quente é o centro).
+pub const RESIZE_CURSOR_SIZE: f32 = 26.0;
+
+/// Cursor de redimensionar: seta de duas pontas, preta com contorno branco e
+/// sombra, girada `angle` graus (0 = ↔, 90 = ↕, 45 = ⤡, −45 = ⤢).
+pub fn cursor_resize(angle: f32, scale: f32) -> Option<Canvas> {
+    let side = RESIZE_CURSOR_SIZE;
+    let mut c = Canvas::new(side, side, scale)?;
+    let (sin, cos) = angle.to_radians().sin_cos();
+    // Seta deitada, centrada na origem.
+    let pts: [(f32, f32); 10] = [(-9.5, 0.0), (-5.0, -4.6), (-5.0, -1.6), (5.0, -1.6), (5.0, -4.6), (9.5, 0.0), (5.0, 4.6), (5.0, 1.6), (-5.0, 1.6), (-5.0, 4.6)];
+    let arrow = |dx: f32, dy: f32| {
+        let mut pb = tiny_skia::PathBuilder::new();
+        for (i, (x, y)) in pts.iter().enumerate() {
+            let (px, py) = (side / 2.0 + dx + x * cos - y * sin, side / 2.0 + dy + x * sin + y * cos);
+            if i == 0 { pb.move_to(px, py) } else { pb.line_to(px, py) }
+        }
+        pb.close();
+        pb.finish()
+    };
+    c.fill(arrow(1.0, 1.6), &solid(rgba(0, 0, 0, 60)));
+    c.stroke(arrow(0.0, 0.0), &solid(rgba(255, 255, 255, 255)), 2.2);
+    c.fill(arrow(0.0, 0.0), &solid(rgba(0, 0, 0, 255)));
+    Some(c)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
