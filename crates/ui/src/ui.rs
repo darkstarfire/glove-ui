@@ -354,6 +354,12 @@ pub struct Memory {
     cursor: HashMap<Id, usize>,
     slider_grab: Option<Id>,
     capture: Option<Id>,
+    /// Áreas que reagem ao mouse passando por cima, no último quadro. Se o mouse
+    /// se mexe sem entrar nem sair de nenhuma, o quadro seria igual: não redesenha.
+    pub(crate) hover_rects: Vec<Rect>,
+    /// O último quadro leu a posição do mouse direto (arrastar, seguir o ponteiro):
+    /// todo movimento redesenha.
+    pub(crate) pointer_sensitive: bool,
     /// Texto copiado neste quadro (o kit publica na área de transferência).
     pub(crate) clip_out: Option<String>,
     /// Arquivos copiados neste quadro (e se é "recortar").
@@ -460,6 +466,9 @@ pub struct Ui<'a> {
     pub redraw: bool,
     /// Pede para fechar a janela.
     pub close: bool,
+    /// Áreas que reagiram ao mouse neste quadro e se a posição foi lida direto.
+    hover_log: std::cell::RefCell<Vec<Rect>>,
+    ptr_used: std::cell::Cell<bool>,
 }
 
 const TEXT: f32 = 13.0;
@@ -473,7 +482,7 @@ impl<'a> Ui<'a> {
     pub(crate) fn new(c: &'a mut Canvas, theme: &'a Theme, fonts: &'a Fonts, doc_fonts: &'a Fonts, resizable: bool, input: &'a Input, mem: &'a mut Memory) -> Self {
         let (w, h) = (c.w, c.h);
         let captured = mem.popup.as_ref().is_some_and(|p| p.rect.contains(input.pos)) || mem.popup.is_some() && input.pressed;
-        let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, reserved: false, dimmed: false, redraw: false, close: false };
+        let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
         ui.stack.push(Layout { horizontal: false, x0: 0.0, y0: 0.0, cx: 0.0, cy: 0.0, width: w, used_w: 0.0, used_h: 0.0, spacing: 8.0 });
         let _ = h;
         ui
@@ -599,6 +608,7 @@ impl<'a> Ui<'a> {
     /// widgets desenhados antes não recebem o mouse ali (o clique não atravessa).
     /// Desenhe o menu dentro de `unreserved`.
     pub fn reserve(&mut self, r: Rect) {
+        self.hover_log.borrow_mut().push(r);
         if r.contains(self.input.pos) {
             self.reserved = true;
         }
@@ -867,7 +877,14 @@ impl<'a> Ui<'a> {
     // -----------------------------------------------------------------------
 
     fn hovered(&self, r: Rect) -> bool {
+        self.hover_log.borrow_mut().push(r);
         !self.blocked() && self.input.inside && r.contains(self.input.pos)
+    }
+
+    /// A posição do mouse lida direto (marca o quadro como dependente do ponteiro).
+    fn pos(&self) -> (f32, f32) {
+        self.ptr_used.set(true);
+        self.input.pos
     }
 
     /// Lógica de clique comum: devolve (hover, pressionado agora, clicado).
@@ -907,7 +924,7 @@ impl<'a> Ui<'a> {
     }
 
     pub fn pointer(&self) -> (f32, f32) {
-        self.input.pos
+        self.pos()
     }
 
     /// O botão do mouse foi pressionado neste quadro (em qualquer lugar da janela).
@@ -917,7 +934,7 @@ impl<'a> Ui<'a> {
 
     /// Botão direito pressionado dentro de `r` neste quadro (menus de contexto).
     pub fn right_clicked(&self, r: Rect) -> bool {
-        self.input.right_pressed && !self.blocked() && r.contains(self.input.pos)
+        self.input.right_pressed && !self.blocked() && r.contains(self.pos())
     }
 
     /// O botão do mouse foi solto neste quadro.
@@ -932,6 +949,7 @@ impl<'a> Ui<'a> {
 
     /// O mouse se moveu neste quadro.
     pub fn moved(&self) -> bool {
+        self.ptr_used.set(true);
         self.input.moved
     }
 
@@ -1163,7 +1181,7 @@ impl<'a> Ui<'a> {
         let mut changed = false;
         if self.mem.slider_grab == Some(id) {
             if self.input.down || self.input.pressed {
-                let t = ((self.input.pos.0 - track.x) / track.w).clamp(0.0, 1.0);
+                let t = ((self.pos().0 - track.x) / track.w).clamp(0.0, 1.0);
                 let v = min + t * (max - min);
                 if (v - *value).abs() > f32::EPSILON {
                     *value = v;
@@ -1200,7 +1218,7 @@ impl<'a> Ui<'a> {
             }
             if self.mem.slider_grab == Some(id) {
                 if self.input.down || self.input.pressed {
-                    let mut t = ((self.input.pos.0 - track.x) / track.w).clamp(0.0, 1.0);
+                    let mut t = ((self.pos().0 - track.x) / track.w).clamp(0.0, 1.0);
                     if ticks.snap && ticks.count > 1 {
                         let n = (ticks.count - 1) as f32;
                         t = (t * n).round() / n;
@@ -1841,7 +1859,7 @@ impl<'a> Ui<'a> {
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
         // Só a janela ativa pulsa (como no original); nas outras o botão fica parado
         // e o app não gasta nada.
-        let pulse = if self.input.active {
+        let pulse = if self.input.active && !glove_config::reduce_effects() {
             0.5 + 0.5 * ((ms % 1600) as f32 / 1600.0 * std::f32::consts::TAU).sin()
         } else {
             0.5
@@ -1861,7 +1879,7 @@ impl<'a> Ui<'a> {
         }
         let mut chosen = None;
         let last = buttons.len().saturating_sub(1);
-        if self.input.active && !buttons.is_empty() {
+        if self.input.active && !buttons.is_empty() && !glove_config::reduce_effects() {
             // Só o botão padrão muda a cada quadro do pulso.
             self.wake_after_in(Duration::from_millis(200), rects[last]);
         }
@@ -1914,7 +1932,8 @@ impl<'a> Ui<'a> {
     /// Barra de progresso num retângulo livre.
     pub fn progress_in(&mut self, r: Rect, value: Option<f32>) {
         let phase = if value.is_none() {
-            self.wake_after_in(std::time::Duration::from_millis(50), r);
+            // Reduzir efeitos: as listras andam devagar (5 quadros/s em vez de 20).
+            self.wake_after_in(std::time::Duration::from_millis(if glove_config::reduce_effects() { 200 } else { 50 }), r);
             anim_phase(900)
         } else {
             0.0
@@ -1931,7 +1950,8 @@ impl<'a> Ui<'a> {
     /// Giratório centrado em (cx, cy).
     pub fn spinner_at(&mut self, cx: f32, cy: f32, size: f32) {
         let h = size / 2.0 + 1.0;
-        self.wake_after_in(std::time::Duration::from_millis(1000 / 12), Rect::new(cx - h, cy - h, h * 2.0, h * 2.0));
+        let ms = if glove_config::reduce_effects() { 250 } else { 1000 / 12 };
+        self.wake_after_in(std::time::Duration::from_millis(ms), Rect::new(cx - h, cy - h, h * 2.0, h * 2.0));
         spinner(self.c, cx, cy, size / 2.0, anim_phase(1000), rgba(60, 60, 64, 255));
     }
 
@@ -1953,6 +1973,7 @@ impl<'a> Ui<'a> {
         let old_clip = self.c.clip();
         self.c.set_clip(Some([(inner.x * s).floor() as i32, (inner.y * s).floor() as i32, ((inner.x + inner.w) * s).ceil() as i32, ((inner.y + inner.h) * s).ceil() as i32]));
         let was = self.disabled;
+        self.hover_log.borrow_mut().push(inner);
         if !inner.contains(self.input.pos) {
             self.disabled = true;
         }
@@ -1988,7 +2009,7 @@ impl<'a> Ui<'a> {
         let thumb_x = |o: f32| track.x + if max > 0.0 { o / max * (track.w - thumb_w) } else { 0.0 };
         let grab = id ^ 0x5d5d;
         if max > 0.0 && self.input.pressed {
-            let mx = self.input.pos.0;
+            let mx = self.pos().0;
             if self.hovered(track) {
                 let tx = thumb_x(*offset);
                 if mx >= tx && mx < tx + thumb_w {
@@ -2007,7 +2028,7 @@ impl<'a> Ui<'a> {
         if self.mem.slider_grab == Some(grab) {
             if self.input.down {
                 let off = *self.mem.scroll.get(&grab).unwrap_or(&0.0);
-                let t = ((self.input.pos.0 - off - track.x) / (track.w - thumb_w).max(1.0)).clamp(0.0, 1.0);
+                let t = ((self.pos().0 - off - track.x) / (track.w - thumb_w).max(1.0)).clamp(0.0, 1.0);
                 *offset = t * max;
             }
             if self.input.released {
@@ -2055,7 +2076,7 @@ impl<'a> Ui<'a> {
         let (grab, up_id, down_id) = (id ^ 0x5c5c, id ^ 0x5c01, id ^ 0x5c02);
 
         if max > 0.0 && self.input.pressed {
-            let my = self.input.pos.1;
+            let my = self.pos().1;
             if self.hovered(track) {
                 let ty = thumb_y(*offset);
                 if my >= ty && my < ty + thumb_h {
@@ -2083,7 +2104,7 @@ impl<'a> Ui<'a> {
         if self.mem.slider_grab == Some(grab) {
             if self.input.down {
                 let off = *self.mem.scroll.get(&grab).unwrap_or(&0.0);
-                let t = ((self.input.pos.1 - off - track.y) / (track.h - thumb_h).max(1.0)).clamp(0.0, 1.0);
+                let t = ((self.pos().1 - off - track.y) / (track.h - thumb_h).max(1.0)).clamp(0.0, 1.0);
                 *offset = t * max;
             }
             if self.input.released {
@@ -2170,7 +2191,7 @@ impl<'a> Ui<'a> {
         let mut changed = false;
         let hover = self.hovered(r);
         if hover && self.input.pressed {
-            let idx = ((self.input.pos.1 - r.y - 1.0 + off) / row_h).floor() as isize;
+            let idx = ((self.pos().1 - r.y - 1.0 + off) / row_h).floor() as isize;
             if idx >= 0 && (idx as usize) < rows.len() && *selected != Some(idx as usize) {
                 *selected = Some(idx as usize);
                 changed = true;
@@ -2248,12 +2269,12 @@ impl<'a> Ui<'a> {
         let first = (state.scroll / rh).floor().max(0.0) as usize;
         let count = (body.h / rh).ceil() as usize + 1;
         if self.hovered(body) && self.input.pressed {
-            let i = ((self.input.pos.1 - body.y + state.scroll) / rh).floor();
+            let i = ((self.pos().1 - body.y + state.scroll) / rh).floor();
             if i >= 0.0 && (i as usize) < rows.len() {
                 let i = i as usize;
                 let row = &rows[i];
                 let tx = body.x + xs.first().copied().unwrap_or(0.0) + 4.0 + row.depth as f32 * TABLE_INDENT;
-                if tree && row.children.is_some() && self.input.pos.0 >= tx - 2.0 && self.input.pos.0 < tx + TABLE_INDENT {
+                if tree && row.children.is_some() && self.pos().0 >= tx - 2.0 && self.pos().0 < tx + TABLE_INDENT {
                     resp.toggled = Some(i);
                 } else {
                     resp.pressed = Some(i);
@@ -2459,7 +2480,7 @@ impl<'a> Ui<'a> {
 
         // Mouse no texto
         let hover = self.hovered(tr);
-        let local = |ui: &Self, buf: &TextBuffer| (ui.input.pos.0 - tr.x - PAD + buf.scroll_x, ui.input.pos.1 - tr.y - PAD + buf.scroll_y);
+        let local = |ui: &Self, buf: &TextBuffer| (ui.pos().0 - tr.x - PAD + buf.scroll_x, ui.pos().1 - tr.y - PAD + buf.scroll_y);
         if hover && self.input.pressed {
             self.mem.focus = Some(id);
             self.mem.active = Some(id);
@@ -2666,6 +2687,10 @@ impl<'a> Ui<'a> {
     }
 
     pub(crate) fn finish(mut self) -> (bool, bool) {
+        // Pop-up aberto: os itens acendem pela posição do mouse.
+        let sensitive = self.ptr_used.get() || self.mem.popup.is_some() || self.mem.capture.is_some();
+        self.mem.pointer_sensitive = sensitive;
+        self.mem.hover_rects = std::mem::take(&mut *self.hover_log.borrow_mut());
         if self.resizable {
             self.resize_grip();
         }

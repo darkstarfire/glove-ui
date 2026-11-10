@@ -37,12 +37,13 @@ fn panel_rect(ui: &mut Ui, place: &mut PanelPlace, pw: f32, ph: f32) -> Rect {
     let (mut x, mut y) = place.pos.unwrap_or(((w - pw) / 2.0, (h - ph) / 2.0));
     let title = Rect::new(x + 20.0, y, pw - 20.0, 18.0);
     let hit = ui.hit(title);
-    let pt = ui.pointer();
     if hit.pressed {
+        let pt = ui.pointer();
         place.grab = Some((pt.0 - x, pt.1 - y));
     }
     if let Some((gx, gy)) = place.grab {
         if ui.mouse_down() {
+            let pt = ui.pointer();
             x = pt.0 - gx;
             y = pt.1 - gy;
             place.pos = Some((x, y));

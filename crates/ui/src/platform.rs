@@ -183,6 +183,11 @@ struct Win {
     /// Cópia do último quadro enviado, para achar o que mudou.
     prev: Vec<u8>,
     prev_key: (u32, u32, u32),
+    /// Áreas cruzadas pelo mouse que já se viu não mudarem nada na tela (só clique):
+    /// cruzá-las de novo não redesenha.
+    silent: std::collections::HashSet<[u32; 4]>,
+    /// O quadro pedido só porque o mouse cruzou estas áreas (para aprender as mudas).
+    probe: Option<Vec<[u32; 4]>>,
     /// Canvas reaproveitado enquanto o tamanho/escala não mudam.
     canvas: Option<Canvas>,
     /// Já há um timer de "acordar" pendente (ui.wake_after).
@@ -255,6 +260,8 @@ impl Shells {
             history: std::collections::VecDeque::new(),
             prev: Vec::new(),
             prev_key: (0, 0, 0),
+            silent: Default::default(),
+            probe: None,
             canvas: None,
             wake_pending: false,
             size_anim: None,
@@ -684,6 +691,15 @@ impl<A: App> Runner<A> {
             }
             let (pw, ph) = (canvas.px_width() as i32, canvas.px_height() as i32);
             let damage = frame_damage(&mut self.w.prev, canvas.data(), pw, ph, region.unwrap_or([0, 0, pw, ph]));
+            // Quadro só do mouse cruzando áreas, e nada mudou: essas áreas são mudas.
+            if let Some(crossed) = self.w.probe.take() {
+                if damage.is_empty() && pass == 0 && !had_events {
+                    if self.w.silent.len() > 4096 {
+                        self.w.silent.clear();
+                    }
+                    self.w.silent.extend(crossed);
+                }
+            }
             self.present(&canvas, &damage);
             if std::mem::take(&mut self.w.need_commit) && damage.is_empty() {
                 self.w.window.commit();
@@ -825,7 +841,7 @@ impl<A: App> Runner<A> {
         if let Some((w, h, animate)) = self.w.mem.size_req.take() {
             let target = self.w.size_anim.map(|a| a.1).unwrap_or((self.w.width, self.w.height));
             if (w, h) != target {
-                if animate && self.w.shown {
+                if animate && self.w.shown && !glove_config::reduce_effects() {
                     let d = (w as f32 - self.w.width as f32).abs().max((h as f32 - self.w.height as f32).abs());
                     let dur = Duration::from_millis((d * 0.8).clamp(120.0, 300.0) as u64);
                     self.w.size_anim = Some(((self.w.width, self.w.height), (w, h), std::time::Instant::now(), dur));
@@ -1296,12 +1312,20 @@ impl<A: App> PointerHandler for Runner<A> {
     fn pointer_frame(&mut self, _: &Connection, qh: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
         // Cada evento vai para a janela dele; depois, redesenha as que receberam.
         let mut touched: Vec<u32> = Vec::new();
+        // Por janela: onde o mouse estava e se só houve movimento (sem botão, entrar, sair, roda).
+        let mut motion_only: Vec<(u32, (f32, f32), bool)> = Vec::new();
         for e in events {
             if !self.focus_surface(&e.surface) {
                 continue;
             }
             if !touched.contains(&self.w.id) {
                 touched.push(self.w.id);
+                motion_only.push((self.w.id, self.w.input.pos, true));
+            }
+            if !matches!(e.kind, PointerEventKind::Motion { .. }) {
+                if let Some(m) = motion_only.iter_mut().find(|m| m.0 == self.w.id) {
+                    m.2 = false;
+                }
             }
             self.w.input.pos = (e.position.0 as f32, e.position.1 as f32);
             match e.kind {
@@ -1335,6 +1359,22 @@ impl<A: App> PointerHandler for Runner<A> {
         }
         for id in touched {
             if self.focus_id(id) {
+                // Só o mouse passando, sem entrar nem sair de nada que acende: o quadro
+                // sairia igual ao anterior. Não redesenha (num processador fraco, redesenhar
+                // a janela inteira a cada movimento é o que mais pesa).
+                let (old, only) = motion_only.iter().find(|m| m.0 == id).map_or(((0.0, 0.0), false), |m| (m.1, m.2));
+                let new = self.w.input.pos;
+                let quiet = only && !self.w.input.down && !self.w.mem.pointer_sensitive && self.w.input.inside && !self.w.dirty;
+                if quiet {
+                    let key = |r: &crate::ui::Rect| [r.x.to_bits(), r.y.to_bits(), r.w.to_bits(), r.h.to_bits()];
+                    let crossed: Vec<[u32; 4]> = self.w.mem.hover_rects.iter().filter(|r| r.contains(old) != r.contains(new)).map(key).collect();
+                    if crossed.iter().all(|k| self.w.silent.contains(k)) {
+                        continue;
+                    }
+                    self.w.probe = Some(crossed);
+                } else {
+                    self.w.probe = None;
+                }
                 self.request_redraw(qh);
             }
         }

@@ -300,11 +300,32 @@ pub struct Appearance {
     /// Tema de ícones (pasta em /usr/share/icons); vazio = os desenhados pelo Glove.
     #[serde(default)]
     pub icon_theme: String,
+    /// Reduzir efeitos (computadores mais simples): sem animações, sem ampliação do
+    /// Dock, sem sombras e sem o botão padrão pulsando.
+    #[serde(default)]
+    pub reduce_effects: bool,
+}
+
+static REDUCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// "Reduzir efeitos" ligado (lido a cada `Config::load`).
+pub fn reduce_effects() -> bool {
+    REDUCE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Liga ou desliga "Reduzir efeitos" neste processo (o `Config::load` já faz isso).
+pub fn set_reduce_effects(on: bool) {
+    REDUCE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Duração de uma animação: com "Reduzir efeitos", quase nada (termina no quadro seguinte).
+pub fn anim(d: std::time::Duration) -> std::time::Duration {
+    if reduce_effects() { std::time::Duration::from_millis(1) } else { d }
 }
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new() }
+        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false }
     }
 }
 
@@ -951,6 +972,7 @@ impl Config {
                 if c.migrate() || added {
                     let _ = c.save();
                 }
+                set_reduce_effects(c.appearance.reduce_effects);
                 c
             }
             Err(_) => {
