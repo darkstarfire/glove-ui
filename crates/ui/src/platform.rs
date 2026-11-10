@@ -676,7 +676,8 @@ impl<A: App> Runner<A> {
                 self.close_current();
                 return;
             }
-            if (redraw || had_events || resized) && pass < 2 {
+            let settled = std::mem::take(&mut self.w.mem.settled);
+            if (redraw || (had_events && !settled) || resized) && pass < 2 {
                 // A próxima passada pode mudar qualquer coisa: refaz tudo.
                 partial = false;
                 self.w.canvas = Some(canvas);

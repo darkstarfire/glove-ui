@@ -553,6 +553,27 @@ impl Canvas {
     }
 
     /// Copia outro canvas (mesma escala) na posição lógica (x, y).
+    /// Copia um pixmap (pixels do aparelho, pré-multiplicado) com o canto em (x, y)
+    /// lógicos, sem escala: bem mais rápido que `draw_pixmap_t` para imagens prontas.
+    pub fn blit_pixmap(&mut self, img: &Pixmap, x: f32, y: f32) {
+        let s = self.scale;
+        let (ox, oy) = ((x * s).round() as i32, (y * s).round() as i32);
+        let (sw, sh) = (img.width() as i32, img.height() as i32);
+        let [bx0, by0, bx1, by1] = self.bounds();
+        let (x0, x1) = (ox.max(bx0), (ox + sw).min(bx1));
+        let (y0, y1) = (oy.max(by0), (oy + sh).min(by1));
+        if x0 >= x1 || y0 >= y1 {
+            return;
+        }
+        let n = (x1 - x0) as usize * 4;
+        let src = img.data();
+        for yy in y0..y1 {
+            let si = ((yy - oy) as usize * sw as usize + (x0 - ox) as usize) * 4;
+            let di = self.idx(x0, yy);
+            blend_row(&mut self.pm.data_mut()[di..di + n], &src[si..si + n]);
+        }
+    }
+
     pub fn draw_canvas(&mut self, other: &Canvas, x: f32, y: f32) {
         let s = self.scale;
         let (ox, oy) = ((x * s).round() as i32, (y * s).round() as i32);

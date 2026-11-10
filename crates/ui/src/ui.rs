@@ -360,6 +360,8 @@ pub struct Memory {
     /// O último quadro leu a posição do mouse direto (arrastar, seguir o ponteiro):
     /// todo movimento redesenha.
     pub(crate) pointer_sensitive: bool,
+    /// O app garantiu que este quadro já saiu certo (ver `Ui::settled`).
+    pub(crate) settled: bool,
     /// Texto copiado neste quadro (o kit publica na área de transferência).
     pub(crate) clip_out: Option<String>,
     /// Arquivos copiados neste quadro (e se é "recortar").
@@ -945,6 +947,14 @@ impl<'a> Ui<'a> {
     /// O botão do mouse está pressionado.
     pub fn mouse_down(&self) -> bool {
         self.input.down
+    }
+
+    /// Diz ao kit que nada do que foi desenhado neste quadro ficou para trás: o
+    /// teclado ou o clique só mudaram o que foi desenhado depois. Sem isso, um
+    /// quadro com eventos é desenhado duas vezes (a segunda mostra o resultado em
+    /// controles desenhados antes da mudança). Vale só para este quadro.
+    pub fn settled(&mut self) {
+        self.mem.settled = true;
     }
 
     /// O mouse se moveu neste quadro.
