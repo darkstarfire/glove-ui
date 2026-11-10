@@ -939,6 +939,11 @@ impl<'a> Ui<'a> {
         self.input.right_pressed && !self.blocked() && r.contains(self.pos())
     }
 
+    /// Algum botão do mouse foi pressionado ou solto neste quadro.
+    pub fn mouse_buttons_changed(&self) -> bool {
+        self.input.pressed || self.input.released || self.input.right_pressed
+    }
+
     /// O botão do mouse foi solto neste quadro.
     pub fn mouse_released(&self) -> bool {
         self.input.released

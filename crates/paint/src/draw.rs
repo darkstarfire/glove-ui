@@ -462,8 +462,28 @@ impl Canvas {
     /// Arredonda os cantos superiores apagando os pixels de fora.
     /// Brilho do metal escovado do Tiger: um pouco mais claro no meio da janela
     /// (`full_w` = largura dela, para as faixas separadas casarem).
+    /// Brilho do metal: branco que vai de 0 nas pontas a 34 no meio de `full_w`.
+    /// Só muda na horizontal: uma linha calculada e repetida (bem mais barato que o
+    /// degradê genérico, e esta faixa é desenhada várias vezes por quadro).
     pub fn metal_sheen(&mut self, x: f32, y: f32, w: f32, h: f32, full_w: f32) {
-        self.fill_rect(x, y, w, h, &linear(0.0, 0.0, full_w.max(1.0), 0.0, &[(0.0, rgba(255, 255, 255, 0)), (0.5, rgba(255, 255, 255, 34)), (1.0, rgba(255, 255, 255, 0))]));
+        let (x0, y0, x1, y1) = self.px_range(x, y, w, h);
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let s = self.scale;
+        let fw = (full_w * s).max(1.0);
+        let mut row = Vec::with_capacity(((x1 - x0) * 4) as usize);
+        for xx in x0..x1 {
+            let t = ((xx as f32 + 0.5) / fw).clamp(0.0, 1.0);
+            let a = (34.0 * (1.0 - (2.0 * t - 1.0).abs())).round() as u8;
+            // Branco pré-multiplicado: cor = alfa.
+            row.extend_from_slice(&[a, a, a, a]);
+        }
+        let n = row.len();
+        for yy in y0..y1 {
+            let at = self.idx(x0, yy);
+            blend_row(&mut self.pm.data_mut()[at..at + n], &row);
+        }
     }
 
     /// Arredonda os cantos de baixo (janelas de metal do Tiger), apagando os pixels de fora.
