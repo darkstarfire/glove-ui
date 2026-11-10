@@ -50,7 +50,9 @@ fn get<'a>(f: &'a [(String, String)], k: &str) -> Option<&'a str> {
 /// Programas de fundo que fazem o que o Glove já faz (e abririam as janelas
 /// deles por cima das do Glove): o ícone de rede do GNOME pede a senha do Wi-Fi
 /// na janela dele; o Glove pede nas Preferências.
-const REPLACED_BY_GLOVE: &[&str] = &["nm-applet", "nm-tray", "blueman-applet"];
+/// Programas que o Glove já faz por conta própria (rede, Bluetooth, volume) ou que
+/// só servem para pôr um ícone numa bandeja, que o Glove não tem.
+const REPLACED_BY_GLOVE: &[&str] = &["nm-applet", "nm-tray", "blueman-applet", "pasystray", "xapp-sn-watcher", "system-config-printer-applet"];
 
 fn for_glove(f: &[(String, String)]) -> bool {
     let has = |k: &str| get(f, k).map(|v| v.split(';').any(|d| d.eq_ignore_ascii_case("glove")));
