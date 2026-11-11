@@ -57,6 +57,18 @@ pub struct FileBrowser {
     grown_from: Option<(f32, f32)>,
     /// Título e botão próprios (Inserir Imagem…), no lugar de Abrir.
     labels: Option<(String, String)>,
+    /// Tamanho que o usuário deu à folha arrastando o canto (dentro da janela do app).
+    sheet_size: Option<(f32, f32)>,
+    /// Arrastando o canto da folha: onde o mouse pegou e o tamanho naquele momento.
+    grip: Option<(f32, f32, f32, f32)>,
+}
+
+/// Tamanho da folha dentro de uma janela `(w, h)`: o que o usuário pediu (ou o
+/// padrão), sem passar da janela nem ficar pequena demais para usar.
+fn sheet_fit(asked: Option<(f32, f32)>, default_h: f32, w: f32, h: f32) -> (f32, f32) {
+    let (aw, ah) = asked.unwrap_or((620.0, default_h));
+    let max_h = (h - 8.0).max(0.0);
+    (aw.min(w - 24.0).max(320.0), ah.max(240.0).min(max_h))
 }
 
 fn home() -> PathBuf {
@@ -130,7 +142,7 @@ impl FileBrowser {
 
     fn new(mode: Mode, dir: Option<PathBuf>, name: String, filter: &[&str]) -> Self {
         let dir = dir.filter(|d| d.is_dir()).unwrap_or_else(home);
-        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None, labels: None }
+        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None, labels: None, sheet_size: None, grip: None }
     }
 
     /// O conteúdo da pasta (lido do disco só na primeira vez).
@@ -232,8 +244,15 @@ impl Ui<'_> {
             self.c.pinstripes(0.0, 0.0, w, h, self.theme.body_a, self.theme.body_b);
             (0.0, w, h)
         } else {
-            let sw = (w - 24.0).min(620.0).max(320.0);
-            let sh = (h - 8.0).min(if fb.mode == Mode::Save { 400.0 } else { 370.0 });
+            // Arrastando o canto: a folha é centrada, então a largura cresce dos dois lados.
+            if let Some((px, py, w0, h0)) = fb.grip {
+                let (mx, my) = self.pointer();
+                fb.sheet_size = Some(sheet_fit(Some((w0 + (mx - px) * 2.0, h0 + my - py)), 0.0, w, h));
+                if !self.mouse_down() && !self.mouse_pressed() {
+                    fb.grip = None;
+                }
+            }
+            let (sw, sh) = sheet_fit(fb.sheet_size, if fb.mode == Mode::Save { 400.0 } else { 370.0 }, w, h);
             let sx = ((w - sw) / 2.0).round();
             // Fundo escurecido e a folha listrada encostada no topo.
             self.c.fill_rect(0.0, 0.0, w, h, &solid(rgba(0, 0, 0, 40)));
@@ -428,8 +447,37 @@ impl Ui<'_> {
         if ok && result.is_none() {
             result = fb.confirm();
         }
+        // Canto da folha: arrastar muda o tamanho dela (a janela própria usa o da janela).
+        if !fb.whole_window && fb.grown_from.is_none() {
+            self.grip_marks(sx + sw - 3.0, sh - 4.0);
+            let corner = Rect::new(sx + sw - 18.0, sh - 18.0, 18.0, 18.0);
+            let (mx, my) = self.pointer();
+            // O canto da janela (logo ao lado, com a folha no máximo) é do puxador da janela.
+            let window_corner = mx >= w - 15.0 && my >= h - 15.0;
+            if self.hit(corner).pressed && !window_corner {
+                fb.grip = Some((mx, my, sw, sh));
+            }
+        }
         // Nada embaixo responde enquanto a folha está aberta.
         self.set_enabled(false);
         result
+    }
+}
+
+#[cfg(test)]
+mod sheet_tests {
+    use super::*;
+
+    #[test]
+    fn folha_cabe_na_janela() {
+        // Sem pedido: o tamanho de sempre.
+        assert_eq!(sheet_fit(None, 370.0, 1000.0, 700.0), (620.0, 370.0));
+        // O usuário aumentou: vale o que ele pediu, até a borda da janela.
+        assert_eq!(sheet_fit(Some((800.0, 500.0)), 370.0, 1000.0, 700.0), (800.0, 500.0));
+        assert_eq!(sheet_fit(Some((2000.0, 2000.0)), 370.0, 1000.0, 700.0), (976.0, 692.0));
+        // Nem pequena demais.
+        assert_eq!(sheet_fit(Some((100.0, 50.0)), 370.0, 1000.0, 700.0), (320.0, 240.0));
+        // Janela baixa: a folha não passa dela.
+        assert_eq!(sheet_fit(None, 400.0, 700.0, 300.0), (620.0, 292.0));
     }
 }

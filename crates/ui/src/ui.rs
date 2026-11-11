@@ -2714,13 +2714,9 @@ impl<'a> Ui<'a> {
     // Fim do quadro: desenha o pop-up aberto por cima de tudo
     // -----------------------------------------------------------------------
 
-    /// Puxador no canto inferior direito (redimensionar arrastando).
-    fn resize_grip(&mut self) {
-        let (w, h) = (self.c.w, self.c.h);
-        let r = Rect::new(w - 15.0, h - 15.0, 15.0, 15.0);
-        // Como no Tiger: quatro ranhuras diagonais direto sobre a janela (sem caixa),
-        // pixel a pixel (nítidas): um traço escuro com um claro colado, como cavadas.
-        let (cx, cy) = ((w - 2.0).floor(), (h - 2.0).floor());
+    /// As ranhuras do puxador, com o canto inferior direito em `(x, y)`.
+    pub(crate) fn grip_marks(&mut self, x: f32, y: f32) {
+        let (cx, cy) = (x.floor(), y.floor());
         for len in [13.0f32, 10.0, 7.0, 4.0] {
             let n = len as i32;
             for t in 0..n {
@@ -2729,7 +2725,18 @@ impl<'a> Ui<'a> {
                 self.c.fill_cell(x + 1.0, y, 1.0, 1.0, rgba(255, 255, 255, 220));
             }
         }
-        if !self.blocked() && self.input.pressed && r.contains(self.input.pos) {
+    }
+
+    /// Puxador no canto inferior direito (redimensionar arrastando).
+    fn resize_grip(&mut self) {
+        let (w, h) = (self.c.w, self.c.h);
+        let r = Rect::new(w - 15.0, h - 15.0, 15.0, 15.0);
+        // Como no Tiger: quatro ranhuras diagonais direto sobre a janela (sem caixa),
+        // pixel a pixel (nítidas): um traço escuro com um claro colado, como cavadas.
+        self.grip_marks(w - 2.0, h - 2.0);
+        // Vale também com uma folha aberta (controles desligados): a janela Abrir/Salvar
+        // é uma folha que ocupa a janela toda, e a folha de um app cresce com a janela dele.
+        if !self.captured && !self.reserved && self.input.pressed && r.contains(self.input.pos) {
             self.mem.resize_req = true;
         }
     }
