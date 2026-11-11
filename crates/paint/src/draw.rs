@@ -341,13 +341,41 @@ pub fn diff_ops(old: &[Op], new: &[Op]) -> Vec<[i32; 4]> {
 pub fn merge_rects(mut rs: Vec<[i32; 4]>, max: usize) -> Vec<[i32; 4]> {
     // Quanto vale, em pixels, uma passada a mais do app.
     const PASS: i64 = 100_000;
+    // A busca do melhor par, abaixo, custa o cubo da quantidade: só com poucos.
+    const EXACT: usize = 24;
     rs.retain(|r| !is_empty(*r));
+    let extra = |a: [i32; 4], b: [i32; 4]| area(union(a, b)) - area(a) - area(b) + area(inter(a, b));
+    if rs.len() > EXACT {
+        // Muitos (uma tela de texto que rolou): primeiro, numa passada só, junta
+        // os vizinhos que se encostam (as letras de uma linha viram um trecho)…
+        rs.sort_unstable_by_key(|r| (r[1], r[0]));
+        let mut out: Vec<[i32; 4]> = Vec::with_capacity(rs.len().min(256));
+        for r in rs {
+            match out.last_mut() {
+                Some(l) if extra(*l, r) <= 256 => *l = union(*l, r),
+                _ => out.push(r),
+            }
+        }
+        rs = out;
+        // …e, se ainda sobram muitos, junta por faixas horizontais cada vez mais altas.
+        let mut band = 16;
+        while rs.len() > EXACT {
+            let mut out: Vec<[i32; 4]> = Vec::new();
+            for r in rs {
+                match out.last_mut() {
+                    Some(l) if r[1].div_euclid(band) == l[1].div_euclid(band) => *l = union(*l, r),
+                    _ => out.push(r),
+                }
+            }
+            rs = out;
+            band *= 2;
+        }
+    }
     loop {
         let mut best: Option<(i64, usize, usize)> = None;
         for a in 0..rs.len() {
             for b in a + 1..rs.len() {
-                let u = union(rs[a], rs[b]);
-                let extra = area(u) - area(rs[a]) - area(rs[b]) + area(inter(rs[a], rs[b]));
+                let extra = extra(rs[a], rs[b]);
                 if best.is_none_or(|(e, _, _)| extra < e) {
                     best = Some((extra, a, b));
                 }
@@ -1538,6 +1566,31 @@ mod tests {
                 assert!(total < (c.px_width() * c.px_height()) as i64 / 2, "{a:?} → {b:?}: {rects:?}");
             }
         }
+    }
+
+    /// Uma tela de texto que rolou (milhares de letras mudadas) não pode custar
+    /// segundos para juntar: era o cubo da quantidade.
+    #[test]
+    fn junta_milhares_de_retangulos_depressa() {
+        let mut rs = Vec::new();
+        for row in 0..60 {
+            for col in 0..200 {
+                rs.push([col * 8 - 4, row * 16 - 4, col * 8 + 12, row * 16 + 20]);
+            }
+        }
+        let t = std::time::Instant::now();
+        let out = merge_rects(rs.clone(), 3);
+        assert!(t.elapsed() < std::time::Duration::from_millis(100), "{:?}", t.elapsed());
+        assert!(!out.is_empty() && out.len() <= 3);
+        // Nada do que mudou fica de fora.
+        for r in &rs {
+            assert!(out.iter().any(|o| o[0] <= r[0] && o[1] <= r[1] && o[2] >= r[2] && o[3] >= r[3]), "{r:?} fora de {out:?}");
+        }
+        // Duas letras distantes na mesma linha continuam duas áreas pequenas... com muitas outras juntas.
+        let mut few: Vec<[i32; 4]> = (0..40).map(|k| [k * 8, 0, k * 8 + 8, 16]).collect();
+        few.push([1500, 900, 1508, 916]);
+        let out = merge_rects(few, 3);
+        assert_eq!(out.len(), 2, "{out:?}");
     }
 
     #[test]

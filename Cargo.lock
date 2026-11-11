@@ -227,7 +227,7 @@ checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 
 [[package]]
 name = "glove-config"
-version = "0.2.21"
+version = "0.2.25"
 dependencies = [
  "glove-i18n",
  "libc",
@@ -237,11 +237,11 @@ dependencies = [
 
 [[package]]
 name = "glove-i18n"
-version = "0.2.21"
+version = "0.2.25"
 
 [[package]]
 name = "glove-paint"
-version = "0.2.21"
+version = "0.2.25"
 dependencies = [
  "ab_glyph",
  "glove-i18n",
@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "glove-ui"
-version = "0.2.21"
+version = "0.2.25"
 dependencies = [
  "glove-config",
  "glove-paint",
