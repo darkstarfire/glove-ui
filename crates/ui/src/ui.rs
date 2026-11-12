@@ -392,6 +392,8 @@ pub struct Memory {
     pub(crate) minimize_req: bool,
     /// Novo tamanho da janela pedido pelo app: (largura, altura, animar).
     pub(crate) size_req: Option<(u32, u32, bool)>,
+    /// Novo tamanho mínimo da janela pedido pelo app: (largura, altura, animar).
+    pub(crate) min_req: Option<(u32, u32, bool)>,
     /// Pedido para redesenhar daqui a pouco (animações, repetição de setas).
     pub(crate) wake_after: Option<std::time::Duration>,
     /// Onde estão as animações que pediram o próximo quadro (redesenho parcial:
@@ -438,6 +440,7 @@ impl Memory {
         self.glove_cmds.clear();
         self.minimize_req = false;
         self.size_req = None;
+        self.min_req = None;
         self.wake_after = None;
         self.move_req = false;
         self.doc_font_req = None;
@@ -675,6 +678,14 @@ impl<'a> Ui<'a> {
     /// Pode ser chamado a cada quadro: só age quando o tamanho pedido muda.
     pub fn set_window_size(&mut self, w: f32, h: f32, animate: bool) {
         self.mem.size_req = Some((w.round().max(1.0) as u32, h.round().max(1.0) as u32, animate));
+    }
+
+    /// Tamanho mínimo de uma janela redimensionável, que pode mudar a cada quadro
+    /// (nas Preferências, cada painel tem o seu). A janela acompanha o mínimo enquanto
+    /// o usuário não a aumentar e nunca fica menor que ele; o que o usuário aumentou
+    /// continua valendo quando o mínimo muda. Substitui `set_window_size`.
+    pub fn set_window_min_size(&mut self, w: f32, h: f32, animate: bool) {
+        self.mem.min_req = Some((w.round().max(1.0) as u32, h.round().max(1.0) as u32, animate));
     }
 
     pub fn minimize(&mut self) {

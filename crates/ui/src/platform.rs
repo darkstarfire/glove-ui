@@ -199,10 +199,32 @@ struct Win {
     wake_pending: bool,
     /// Mudança de tamanho pedida pelo app, animada: (de, para, início, duração).
     size_anim: Option<((u32, u32), (u32, u32), std::time::Instant, Duration)>,
+    /// Mínimo pedido pelo app com `set_window_min_size` (o último enviado ao compositor).
+    min: Option<(u32, u32)>,
+    /// O que o usuário aumentou além do mínimo, por eixo (sem valor = acompanha o mínimo).
+    chosen: (Option<u32>, Option<u32>),
+    /// Último tamanho que o compositor pediu.
+    cfg_size: Option<(u32, u32)>,
+    /// O usuário está arrastando a borda; o tamanho no começo do arraste e os eixos em
+    /// que ele já mexeu (só esses contam como escolhidos).
+    resizing: bool,
+    drag_base: (u32, u32),
+    touched: (bool, bool),
     /// Algum quadro já foi para a tela (antes disso o tamanho muda sem animar).
     shown: bool,
     // Clique duplo/triplo
     last_click: (u32, (f32, f32), u8),
+}
+
+/// O que o usuário aumentou além do mínimo, nos eixos em que ele mexeu (`touched`); os
+/// outros ficam como estavam. O eixo que voltou ao mínimo acompanha o mínimo (sem valor).
+fn chosen_size(prev: (Option<u32>, Option<u32>), touched: (bool, bool), size: (u32, u32), min: (u32, u32)) -> (Option<u32>, Option<u32>) {
+    (if touched.0 { (size.0 > min.0).then_some(size.0) } else { prev.0 }, if touched.1 { (size.1 > min.1).then_some(size.1) } else { prev.1 })
+}
+
+/// Tamanho da janela para um mínimo: o que o usuário escolheu, nunca abaixo do mínimo.
+fn floor_size(chosen: (Option<u32>, Option<u32>), min: (u32, u32)) -> (u32, u32) {
+    (chosen.0.map_or(min.0, |c| c.max(min.0)), chosen.1.map_or(min.1, |c| c.max(min.1)))
 }
 
 /// Janelas sem a barra de título do Glove: o app desenha a própria moldura
@@ -273,6 +295,12 @@ impl Shells {
             forced: Vec::new(),
             wake_pending: false,
             size_anim: None,
+            min: None,
+            chosen: (None, None),
+            cfg_size: None,
+            resizing: false,
+            drag_base: (0, 0),
+            touched: (false, false),
             shown: false,
             last_click: (0, (0.0, 0.0), 0),
         }
@@ -1058,6 +1086,25 @@ impl<A: App> Runner<A> {
                 TimeoutAction::Drop
             });
         }
+        if let Some((mw, mh, animate)) = self.w.mem.min_req.take() {
+            if self.w.min != Some((mw, mh)) {
+                self.w.min = Some((mw, mh));
+                self.w.window.set_min_size(Some((mw, mh)));
+                self.w.need_commit = true;
+            }
+            if self.w.resizing {
+                // Durante o arraste o tamanho é o do compositor; só não fica abaixo do
+                // mínimo (que pode crescer no meio: a grade refaz as linhas). Ao soltar,
+                // a janela vai para o lugar dela, animada.
+                let grown = (self.w.width.max(mw), self.w.height.max(mh));
+                if grown != (self.w.width, self.w.height) {
+                    self.w.mem.size_req = Some((grown.0, grown.1, false));
+                }
+            } else {
+                let (w, h) = floor_size(self.w.chosen, (mw, mh));
+                self.w.mem.size_req = Some((w, h, animate));
+            }
+        }
         if let Some((w, h, animate)) = self.w.mem.size_req.take() {
             let target = self.w.size_anim.map(|a| a.1).unwrap_or((self.w.width, self.w.height));
             if (w, h) != target {
@@ -1443,9 +1490,36 @@ impl<A: App> WindowHandler for Runner<A> {
             return;
         }
         if !self.w.fixed {
+            let resizing = cfg.is_resizing();
+            if resizing && !self.w.resizing {
+                self.w.drag_base = self.w.size_anim.map(|a| a.1).unwrap_or((self.w.width, self.w.height));
+                self.w.touched = (false, false);
+            }
+            self.w.resizing = resizing;
             if let (Some(w), Some(h)) = cfg.new_size {
-                self.w.width = w.get();
-                self.w.height = h.get();
+                let size = (w.get(), h.get());
+                // O compositor repete o último tamanho que pediu a cada configuração (ao
+                // mudar o foco, por exemplo). Só vale quando muda: repetido, desfaria o
+                // tamanho que o app escolheu depois (`set_window_size`).
+                if self.w.cfg_size != Some(size) {
+                    self.w.cfg_size = Some(size);
+                    self.w.size_anim = None;
+                    self.w.width = size.0;
+                    self.w.height = size.1;
+                    if let Some(min) = self.w.min {
+                        // Arrastando, só o eixo em que o usuário mexeu passa a ser escolha
+                        // dele (quem só alarga não prende a altura). Zoom e afins: os dois.
+                        if resizing {
+                            self.w.touched.0 |= size.0 != self.w.drag_base.0;
+                            self.w.touched.1 |= size.1 != self.w.drag_base.1;
+                        } else {
+                            self.w.touched = (true, true);
+                        }
+                        self.w.chosen = chosen_size(self.w.chosen, self.w.touched, size, min);
+                        self.w.width = size.0.max(min.0);
+                        self.w.height = size.1.max(min.1);
+                    }
+                }
             }
         }
         self.w.configured = true;
@@ -1757,6 +1831,29 @@ smithay_client_toolkit::delegate_dispatch2!(@<A: App + 'static> Runner<A>);
 
 #[cfg(test)]
 mod tests {
+    /// Janela com mínimo que muda (Preferências): acompanha o mínimo até o usuário
+    /// aumentar; o que ele aumentou continua, e nunca fica abaixo do mínimo novo.
+    #[test]
+    fn minimo_que_muda() {
+        use super::{chosen_size, floor_size};
+        // Sem mexer: a janela é o mínimo de cada painel.
+        assert_eq!(floor_size((None, None), (660, 480)), (660, 480));
+        assert_eq!(floor_size((None, None), (660, 300)), (660, 300));
+        // Só alargou: a altura continua acompanhando o painel, mesmo que o mínimo tenha
+        // caído no meio do arraste (a grade com menos linhas).
+        let c = chosen_size((None, None), (true, false), (800, 480), (660, 400));
+        assert_eq!(c, (Some(800), None));
+        assert_eq!(floor_size(c, (660, 300)), (800, 300));
+        // Aumentou os dois: vale nos outros painéis, e cresce se o painel pedir mais.
+        let c = chosen_size(c, (true, true), (800, 560), (660, 480));
+        assert_eq!(floor_size(c, (660, 300)), (800, 560));
+        assert_eq!(floor_size(c, (660, 640)), (800, 640));
+        // Estreitou sem mexer na altura: a altura escolhida continua.
+        assert_eq!(chosen_size(c, (true, false), (700, 560), (660, 480)), (Some(700), Some(560)));
+        // Voltou ao mínimo: acompanha de novo.
+        assert_eq!(chosen_size(c, (true, true), (660, 480), (660, 480)), (None, None));
+    }
+
     use super::frame_damage;
 
     #[test]

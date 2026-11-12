@@ -5,7 +5,7 @@ members = ["crates/i18n", "crates/paint", "crates/config", "crates/ui"]
 exclude = ["modelo"]
 
 [workspace.package]
-version = "0.2.26"
+version = "0.2.27"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/fabioaacarneiro/glove-ui"
