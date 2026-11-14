@@ -9,6 +9,7 @@ pub mod draw;
 pub mod font;
 pub mod sysicons;
 pub mod icons;
+pub mod image;
 pub mod saver;
 pub mod theme;
 mod tiger;

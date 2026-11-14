@@ -509,6 +509,38 @@ impl Default for Touchpad {
     }
 }
 
+/// Papel de parede animado (vídeo ou GIF, tocado pelo ffmpeg).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WallpaperAnim {
+    /// Quadros por segundo (o vídeo é reduzido a isso).
+    pub fps: u32,
+    /// Leve: a imagem com metade da resolução (a placa de vídeo amplia).
+    pub light: bool,
+    /// Parar na bateria (fica o quadro atual).
+    pub pause_on_battery: bool,
+    /// Parar com um app em tela cheia.
+    pub pause_fullscreen: bool,
+}
+
+impl Default for WallpaperAnim {
+    fn default() -> Self {
+        Self { fps: 24, light: true, pause_on_battery: true, pause_fullscreen: true }
+    }
+}
+
+impl Config {
+    /// O papel de parede de um monitor (pelo nome do conector).
+    pub fn wallpaper_for(&self, output: &str) -> &str {
+        if self.wallpaper_mode == "por_tela" {
+            if let Some(w) = self.wallpapers.get(output).filter(|w| !w.is_empty()) {
+                return w;
+            }
+        }
+        &self.wallpaper
+    }
+}
+
 /// Monitor (só na sessão própria; dentro de outro desktop vale a janela).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -584,6 +616,9 @@ pub struct OutputInfo {
     pub modes: Vec<String>,
     pub scale: f64,
     pub auto_scale: f64,
+    /// Onde ele fica na mesa e o tamanho lógico: (x, y, largura, altura).
+    #[serde(default)]
+    pub rect: (i32, i32, i32, i32),
 }
 
 impl OutputsInfo {
@@ -676,8 +711,21 @@ pub fn action_label(id: &str) -> &str {
 #[serde(default)]
 pub struct Config {
     pub theme: String,
-    /// "ondas", "aurora", "liso" ou o caminho de uma imagem PNG.
+    /// "ondas", "aurora", "liso", "cor:R,G,B" ou o caminho de uma imagem (PNG,
+    /// JPEG, WebP) ou de um vídeo/GIF (papel animado). Vale para todos os monitores,
+    /// menos no modo "por_tela" para os que têm o seu em `wallpapers`.
     pub wallpaper: String,
+    /// Com mais de um monitor: "igual" (a mesma em cada um), "por_tela" (um papel
+    /// para cada monitor) ou "panorama" (uma imagem só cobrindo todos, pela posição
+    /// deles: lado a lado, um em cima do outro...).
+    pub wallpaper_mode: String,
+    /// Como a imagem ocupa a tela: "preencher", "ajustar", "esticar", "centralizar"
+    /// ou "lado_a_lado".
+    pub wallpaper_fit: String,
+    /// Modo "por_tela": o papel de cada monitor, pelo nome do conector.
+    pub wallpapers: std::collections::BTreeMap<String, String>,
+    /// Papel animado (vídeo ou GIF).
+    pub wallpaper_anim: WallpaperAnim,
     pub terminal: String,
     /// Família da fonte do Terminal (ex.: "JetBrainsMono Nerd Font"); vazio = padrão.
     pub terminal_font: String,
@@ -901,6 +949,10 @@ impl Default for Config {
         Self {
             theme: "claro".into(),
             wallpaper: default_wallpaper(),
+            wallpaper_mode: "igual".into(),
+            wallpaper_fit: "preencher".into(),
+            wallpapers: Default::default(),
+            wallpaper_anim: WallpaperAnim::default(),
             terminal: default_terminal(),
             terminal_font: String::new(),
             terminal_font_size: 12.0,
