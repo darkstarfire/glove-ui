@@ -1489,6 +1489,8 @@ pub enum Extra {
     User { name: String },
     /// Central de avisos: quantos não lidos e "não perturbe".
     Notifications { unread: u32, quiet: bool },
+    /// Central de controle (Wi-Fi, Bluetooth, brilho, luz do teclado, som).
+    Control,
 }
 
 /// Largura do extra na barra.
@@ -1505,7 +1507,195 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
         Extra::User { name } => fonts.measure(name, MENUBAR_PX, true) + 16.0,
         Extra::Notifications { unread: 0, .. } => 28.0,
         Extra::Notifications { unread, .. } => 30.0 + fonts.measure(&(*unread).min(99).to_string(), 9.0, true),
+        Extra::Control => 30.0,
     }
+}
+
+/// Dois botões de ligar (o ícone da central de controle).
+fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
+    for (k, on) in [(0.0, true), (7.0, false)] {
+        let yy = y + k;
+        c.stroke(rrect(x + 0.6, yy + 0.6, 15.0, 6.0, 3.0), &solid(color), 1.2);
+        let kx = if on { x + 12.5 } else { x + 3.5 };
+        c.fill(circle(kx, yy + 3.6, 2.2), &solid(color));
+    }
+}
+
+/// Central de controle: o que ela mostra (None = o computador não tem).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct ControlInfo {
+    /// Wi-Fi: (ligado, nome da rede em uso).
+    pub wifi: Option<(bool, String)>,
+    pub bluetooth: Option<bool>,
+    pub quiet: bool,
+    /// Níveis de 0 a 1.
+    pub brightness: Option<f32>,
+    pub keyboard: Option<f32>,
+    pub volume: Option<(f32, bool)>,
+}
+
+/// As partes da central de controle que respondem ao clique.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ControlPart {
+    Wifi,
+    Bluetooth,
+    Quiet,
+    Brightness,
+    Keyboard,
+    Volume,
+}
+
+pub const CONTROL_W: f32 = 300.0;
+const CC_PAD: f32 = 12.0;
+const CC_TILE_H: f32 = 70.0;
+const CC_SLIDER_H: f32 = 46.0;
+
+/// Onde fica cada parte (x, y, largura, altura, relativos ao conteúdo) e a altura total.
+pub fn control_layout(info: &ControlInfo) -> (Vec<(ControlPart, [f32; 4])>, f32) {
+    let mut v = Vec::new();
+    let tw = (CONTROL_W - 2.0 * CC_PAD - 2.0 * 8.0) / 3.0;
+    for (i, p) in [ControlPart::Wifi, ControlPart::Bluetooth, ControlPart::Quiet].into_iter().enumerate() {
+        v.push((p, [CC_PAD + i as f32 * (tw + 8.0), CC_PAD, tw, CC_TILE_H]));
+    }
+    let mut y = CC_PAD + CC_TILE_H + 10.0;
+    for (p, has) in [(ControlPart::Brightness, info.brightness.is_some()), (ControlPart::Keyboard, info.keyboard.is_some()), (ControlPart::Volume, info.volume.is_some())] {
+        if has {
+            v.push((p, [CC_PAD, y, CONTROL_W - 2.0 * CC_PAD, CC_SLIDER_H]));
+            y += CC_SLIDER_H + 4.0;
+        }
+    }
+    (v, y + CC_PAD - 4.0)
+}
+
+/// Nível de um trilho pela posição x (relativa ao conteúdo).
+pub fn control_level(part_rect: [f32; 4], x: f32) -> f32 {
+    let (x0, x1) = (part_rect[0] + 28.0, part_rect[0] + part_rect[2] - 10.0);
+    ((x - x0) / (x1 - x0)).clamp(0.0, 1.0)
+}
+
+/// Lua crescente (não perturbe): o arco de fora pela esquerda e o de dentro de volta.
+fn moon_glyph(c: &mut Canvas, cx: f32, cy: f32, r: f32, col: Color) {
+    use std::f32::consts::PI;
+    let n = 20;
+    let mut pb = tiny_skia::PathBuilder::new();
+    for i in 0..=n {
+        let a = 0.3 * PI + 1.4 * PI * i as f32 / n as f32;
+        let (x, y) = (cx + r * a.cos(), cy - r * a.sin());
+        if i == 0 { pb.move_to(x, y) } else { pb.line_to(x, y) }
+    }
+    let (ix, ir) = (cx + r * 0.42, r * 0.8);
+    for i in 0..=n {
+        let a = 1.62 * PI - 1.24 * PI * i as f32 / n as f32;
+        pb.line_to(ix + ir * a.cos(), cy - ir * a.sin());
+    }
+    pb.close();
+    c.fill(pb.finish(), &solid(col));
+}
+
+/// Tecladinho com a luz (o símbolo pequeno do trilho da luz do teclado).
+fn kbd_small_glyph(c: &mut Canvas, cx: f32, cy: f32, col: Color) {
+    c.stroke(rrect(cx - 8.0, cy - 2.0, 16.0, 8.0, 1.5), &solid(col), 1.2);
+    for k in 0..4 {
+        c.fill_rect(cx - 6.0 + k as f32 * 3.4, cy, 2.0, 1.5, &solid(col));
+    }
+    c.fill_rect(cx - 4.0, cy + 2.8, 8.0, 1.4, &solid(col));
+    let mut pb = tiny_skia::PathBuilder::new();
+    for dx in [-5.0, 0.0, 5.0] {
+        pb.move_to(cx + dx, cy - 4.5);
+        pb.line_to(cx + dx * 1.3, cy - 7.5);
+    }
+    c.stroke_round(pb.finish(), &solid(col), 1.2);
+}
+
+/// A runa do Bluetooth.
+fn bluetooth_glyph(c: &mut Canvas, cx: f32, cy: f32, h: f32, col: Color) {
+    let (t, b, w) = (cy - h / 2.0, cy + h / 2.0, h * 0.28);
+    let mut pb = tiny_skia::PathBuilder::new();
+    pb.move_to(cx - w, cy - h * 0.25);
+    pb.line_to(cx + w, cy + h * 0.25);
+    pb.line_to(cx, b);
+    pb.line_to(cx, t);
+    pb.line_to(cx + w, cy - h * 0.25);
+    pb.line_to(cx - w, cy + h * 0.25);
+    c.stroke_round(pb.finish(), &solid(col), 2.0);
+}
+
+/// A central de controle que desce do ícone: três botões redondos e os trilhos.
+pub fn control_panel(theme: &Theme, fonts: &Fonts, info: &ControlInfo, scale: f32) -> Option<Canvas> {
+    let (parts, h) = control_layout(info);
+    let w = CONTROL_W;
+    let m = MENU_SHADOW as f32;
+    let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
+    let s = ShadowSpec { blur: 10.0, offset_y: 4.0, radius: 10.0, alpha: 0.45 };
+    if let Some(sh) = Canvas::shadow(-m, 0.0, w + 2.0 * m, h + m, w, h, &s, scale) {
+        c.draw_canvas(&sh, 0.0, 0.0);
+    }
+    let x0 = m;
+    c.fill(rrect(x0, 0.0, w, h, 10.0), &solid(rgba(246, 247, 249, 250)));
+    c.stroke(rrect(x0 + 0.5, 0.5, w - 1.0, h - 1.0, 10.0), &solid(rgba(0, 0, 0, 70)), 1.0);
+    let ink = rgba(25, 25, 28, 255);
+    let soft = rgba(100, 100, 106, 255);
+    for (p, r) in &parts {
+        let (x, y, pw, ph) = (x0 + r[0], r[1], r[2], r[3]);
+        match p {
+            ControlPart::Wifi | ControlPart::Bluetooth | ControlPart::Quiet => {
+                let (on, avail, name, sub) = match p {
+                    ControlPart::Wifi => {
+                        let (on, net) = info.wifi.clone().unwrap_or((false, String::new()));
+                        let sub = if info.wifi.is_none() { "—".to_string() } else if !on { glove_i18n::tr!("Desligado").into() } else if net.is_empty() { glove_i18n::tr!("Ligado").into() } else { net };
+                        (on, info.wifi.is_some(), "Wi-Fi", sub)
+                    }
+                    ControlPart::Bluetooth => {
+                        let on = info.bluetooth.unwrap_or(false);
+                        (on, info.bluetooth.is_some(), "Bluetooth", if info.bluetooth.is_none() { "—".into() } else if on { glove_i18n::tr!("Ligado").into() } else { glove_i18n::tr!("Desligado").into() })
+                    }
+                    _ => (info.quiet, true, glove_i18n::tr!("Não perturbe"), if info.quiet { glove_i18n::tr!("Ligado").into() } else { glove_i18n::tr!("Desligado").into() }),
+                };
+                c.fill(rrect(x, y, pw, ph, 8.0), &solid(rgba(255, 255, 255, 230)));
+                c.stroke(rrect(x + 0.5, y + 0.5, pw - 1.0, ph - 1.0, 8.0), &solid(rgba(0, 0, 0, 40)), 1.0);
+                let (bx, by) = (x + pw / 2.0, y + 20.0);
+                let base = if !avail { rgba(215, 215, 218, 255) } else if on { theme.accent } else { rgba(200, 202, 206, 255) };
+                gel_circle(&mut c, bx, by, 13.0, base);
+                let gcol = if on && avail { Color::WHITE } else { rgba(70, 70, 76, 255) };
+                match p {
+                    ControlPart::Wifi => wifi_glyph(&mut c, bx, by + 6.0, true, 3, gcol),
+                    ControlPart::Bluetooth => bluetooth_glyph(&mut c, bx, by, 13.0, gcol),
+                    _ => moon_glyph(&mut c, bx - 1.0, by, 6.5, gcol),
+                }
+                let t = fonts.ellipsize(name, 10.5, true, pw - 6.0);
+                let tw = fonts.measure(&t, 10.5, true);
+                fonts.draw(&mut c, &t, x + (pw - tw) / 2.0, y + 49.0, 10.5, true, if avail { ink } else { soft });
+                let st = fonts.ellipsize(&sub, 10.0, false, pw - 8.0);
+                let sw = fonts.measure(&st, 10.0, false);
+                fonts.draw(&mut c, &st, x + (pw - sw) / 2.0, y + 62.0, 10.0, false, soft);
+            }
+            ControlPart::Brightness | ControlPart::Keyboard | ControlPart::Volume => {
+                let (label, level, muted) = match p {
+                    ControlPart::Brightness => (glove_i18n::tr!("Tela"), info.brightness.unwrap_or(0.0), false),
+                    ControlPart::Keyboard => (glove_i18n::tr!("Luz do teclado"), info.keyboard.unwrap_or(0.0), false),
+                    _ => (glove_i18n::tr!("Som"), info.volume.map(|v| v.0).unwrap_or(0.0), info.volume.is_some_and(|v| v.1)),
+                };
+                fonts.draw(&mut c, label, x + 2.0, y + 13.0, 11.0, true, ink);
+                // O símbolo à esquerda do trilho.
+                let gy = y + 31.0;
+                match p {
+                    ControlPart::Brightness => sun_glyph(&mut c, x + 10.0, gy, 6.0, soft),
+                    ControlPart::Keyboard => kbd_small_glyph(&mut c, x + 10.0, gy, soft),
+                    _ => speaker_glyph(&mut c, x + 2.0, gy - 8.0, 16.0, if muted { 0 } else { 2 }, soft),
+                }
+                let r = [x - x0, y, pw, ph];
+                let (tx0, tx1) = (x0 + r[0] + 28.0, x0 + r[0] + r[2] - 10.0);
+                let th = 6.0;
+                gel_rect(&mut c, tx0, gy - th / 2.0, tx1 - tx0, th, th / 2.0, rgba(200, 202, 206, 255));
+                let kx = tx0 + level.clamp(0.0, 1.0) * (tx1 - tx0);
+                if !muted {
+                    gel_rect(&mut c, tx0, gy - th / 2.0, (kx - tx0).max(th), th, th / 2.0, theme.accent);
+                }
+                gel_circle(&mut c, kx, gy, 8.0, if muted { rgba(225, 225, 228, 255) } else { lighten(theme.accent, 0.1) });
+            }
+        }
+    }
+    Some(c)
 }
 
 /// Alto-falante com 0 a 3 ondas (sem som = sem ondas, como na era).
@@ -1678,6 +1868,7 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { analog: Some((h, m)), .. } => clock_glyph(c, a + 14.0, 11.0, *h, *m, col),
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
+            Extra::Control => control_glyph(c, a + 7.0, 4.0, col),
             Extra::Notifications { unread, quiet } => {
                 notif_glyph(c, a + 7.0, 4.0, *quiet, col);
                 if *unread > 0 {
@@ -1740,6 +1931,36 @@ pub const OSD_SIZE: f32 = 170.0;
 pub enum OsdKind {
     Volume,
     Brightness,
+    /// Luz do teclado (Ctrl + teclas de brilho, ou as teclas próprias).
+    Keyboard,
+}
+
+/// Teclado com a luz saindo dele (o aviso da luz do teclado).
+fn keyboard_glyph(c: &mut Canvas, cx: f32, cy: f32, w: f32, col: Color) {
+    let h = w * 0.42;
+    let (x, y) = (cx - w / 2.0, cy - h / 2.0 + 10.0);
+    c.stroke(rrect(x, y, w, h, 6.0), &solid(col), 4.0);
+    // Três fileiras de teclas e a barra de espaço.
+    let (kw, kh, gap) = (w * 0.085, h * 0.17, w * 0.028);
+    for row in 0..3 {
+        let n = 8 - row;
+        let ry = y + 7.0 + row as f32 * (kh + gap);
+        let rw = n as f32 * kw + (n - 1) as f32 * gap;
+        for k in 0..n {
+            c.fill_rect(cx - rw / 2.0 + k as f32 * (kw + gap), ry, kw, kh, &solid(col));
+        }
+    }
+    let sw = w * 0.42;
+    c.fill_rect(cx - sw / 2.0, y + 7.0 + 3.0 * (kh + gap), sw, kh, &solid(col));
+    // A luz: raios acima do teclado.
+    let mut pb = tiny_skia::PathBuilder::new();
+    for i in -2..=2 {
+        let a = i as f32 * 0.38;
+        let (sx, sy) = (cx + a.sin() * w * 0.30, y - 8.0 - a.cos() * 2.0);
+        pb.move_to(sx, sy);
+        pb.line_to(sx + a.sin() * 12.0, sy - a.cos() * 12.0);
+    }
+    c.stroke_round(pb.finish(), &solid(col), 4.0);
 }
 
 pub fn osd(kind: OsdKind, level: f32, muted: bool, alpha: f32, scale: f32) -> Option<Canvas> {
@@ -1763,6 +1984,7 @@ pub fn osd(kind: OsdKind, level: f32, muted: bool, alpha: f32, scale: f32) -> Op
             }
         }
         OsdKind::Brightness => sun_glyph(&mut c, s / 2.0, 70.0, 42.0, white),
+        OsdKind::Keyboard => keyboard_glyph(&mut c, s / 2.0, 70.0, 108.0, white),
     }
     let n = 16;
     let (bx, by, bw, bh, gap) = (20.0, s - 34.0, (s - 40.0 - 15.0 * 2.0) / 16.0, 9.0, 2.0);
@@ -2214,6 +2436,28 @@ pub fn avatar(c: &mut Canvas, x: f32, y: f32, s: f32, seed: u64) {
                 c.fill(circle(cx + dx * k, cy + dy * k, r * k), &solid(white));
             }
             c.fill(rrect(cx - 27.0 * k, cy + 4.0 * k, 54.0 * k, 15.0 * k, 7.5 * k), &solid(white));
+        }
+    }
+}
+
+#[cfg(test)]
+mod control_tests {
+    use super::*;
+
+    /// A central com tudo (botões e os três trilhos) cabe na altura medida.
+    #[test]
+    fn central_de_controle() {
+        let info = ControlInfo { wifi: Some((true, "Casa".into())), bluetooth: Some(false), quiet: true, brightness: Some(0.6), keyboard: Some(0.3), volume: Some((0.8, false)) };
+        let (parts, h) = control_layout(&info);
+        assert_eq!(parts.len(), 6);
+        assert!(parts.iter().all(|(_, r)| r[1] + r[3] <= h));
+        assert_eq!(control_level(parts[3].1, parts[3].1[0] + 28.0), 0.0);
+        let theme = crate::theme::Theme::new(crate::theme::Variant::Claro);
+        if let Some(fonts) = crate::Fonts::load_system() {
+            let c = control_panel(&theme, &fonts, &info, 1.0).unwrap();
+            if let Ok(dir) = std::env::var("GLOVE_TESTE_PNG") {
+                c.pm.save_png(std::path::Path::new(&dir).join("central.png")).unwrap();
+            }
         }
     }
 }

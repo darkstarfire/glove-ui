@@ -157,11 +157,13 @@ pub struct TableStyle {
     pub px: f32,
     /// Linhas alternadas em azul-claro (Monitor); o Arquivos não usa.
     pub zebra: bool,
+    /// Outras linhas escolhidas além da principal (Ctrl/Shift + clique no Arquivos).
+    pub also: Vec<usize>,
 }
 
 impl Default for TableStyle {
     fn default() -> Self {
-        Self { row_h: 18.0, px: 11.0, zebra: true }
+        Self { row_h: 18.0, px: 11.0, zebra: true, also: Vec::new() }
     }
 }
 
@@ -396,6 +398,10 @@ pub struct Memory {
     pub(crate) min_req: Option<(u32, u32, bool)>,
     /// Pedido para redesenhar daqui a pouco (animações, repetição de setas).
     pub(crate) wake_after: Option<std::time::Duration>,
+    /// Dica (nome inteiro sob o mouse): o texto, a área e desde quando o mouse está nela.
+    tip: Option<(String, Rect, std::time::Instant)>,
+    /// Alguma área de dica estava sob o mouse neste quadro.
+    tip_seen: bool,
     /// Onde estão as animações que pediram o próximo quadro (redesenho parcial:
     /// se só elas mudam, só essa área é refeita).
     pub(crate) anim_rects: Vec<Rect>,
@@ -1821,6 +1827,26 @@ impl<'a> Ui<'a> {
     /// Pede um novo quadro daqui a `d` (sem eventos), para animações.
     /// O quadro pedido assim é refeito por inteiro; se só uma área muda, use
     /// [`Ui::wake_after_in`].
+    /// Dica: parado sobre `r` por meio segundo, aparece um balão com `text` (o nome
+    /// inteiro de um arquivo cortado na lista, por exemplo). Some ao sair ou clicar.
+    pub fn tooltip(&mut self, r: Rect, text: &str) {
+        if text.is_empty() || !self.hovered(r) {
+            return;
+        }
+        self.mem.tip_seen = true;
+        let same = self.mem.tip.as_ref().is_some_and(|(t, rr, _)| t == text && *rr == r);
+        if !same || self.input.pressed {
+            self.mem.tip = Some((text.to_string(), r, std::time::Instant::now()));
+        }
+    }
+
+    /// Dica só se o texto não coube em `max_w` (com a fonte `px`): o caso comum.
+    pub fn tooltip_if_cut(&mut self, r: Rect, text: &str, px: f32, bold: bool, max_w: f32) {
+        if self.fonts.measure(text, px, bold) > max_w {
+            self.tooltip(r, text);
+        }
+    }
+
     pub fn wake_after(&mut self, d: std::time::Duration) {
         self.mem.wake_after = Some(self.mem.wake_after.map_or(d, |w| w.min(d)));
         self.mem.anim_full = true;
@@ -2359,6 +2385,24 @@ impl<'a> Ui<'a> {
             }
         }
 
+        // Dica com o texto inteiro da primeira coluna (o nome) quando ele foi cortado.
+        for (i, row) in rows.iter().enumerate().skip(first).take(count) {
+            let Some(cell) = row.cells.first() else { continue };
+            let mut x0 = xs.first().copied().unwrap_or(0.0) + 6.0;
+            if tree {
+                x0 += row.depth as f32 * TABLE_INDENT + TABLE_INDENT;
+            }
+            if row.icon.is_some() {
+                x0 += (rh - 2.0).min(16.0) + 4.0;
+            }
+            let avail = col_end(0) - 6.0 - x0;
+            let y = body.y + i as f32 * rh - state.scroll;
+            let (top, bot) = (y.max(body.y), (y + rh).min(body.y + body.h));
+            if bot > top && self.fonts.measure(cell, style.px, false) > avail {
+                self.tooltip(Rect::new(body.x, top, col_end(0), bot - top), cell);
+            }
+        }
+
         // Desenho do cabeçalho (inclui o canto sobre a barra de rolagem).
         let a = self.theme.accent;
         let normal = [(0.0, rgba(255, 255, 255, 255)), (0.4, rgba(245, 245, 245, 255)), (0.5, rgba(236, 236, 236, 255)), (0.56, rgba(243, 243, 243, 255)), (1.0, rgba(255, 255, 255, 255))];
@@ -2412,6 +2456,7 @@ impl<'a> Ui<'a> {
         let fonts = self.fonts;
         let px = style.px;
         let zebra = style.zebra;
+        let also = &style.also;
         self.clipped(id, body, |c, _| {
             c.clear(Color::WHITE);
             if zebra {
@@ -2431,7 +2476,7 @@ impl<'a> Ui<'a> {
             }
             for (i, row) in rows.iter().enumerate().skip(first).take(count) {
                 let y = i as f32 * rh - off;
-                let sel = selected == Some(i);
+                let sel = selected == Some(i) || also.contains(&i);
                 if let (Some(t), false) = (row.tint, sel) {
                     c.fill_rect(0.0, y, body.w, rh, &vgrad(y, y + rh, &[(0.0, lighten(t, 0.45)), (1.0, lighten(t, 0.2))]));
                 }
@@ -2774,6 +2819,28 @@ impl<'a> Ui<'a> {
         self.mem.hover_rects = std::mem::take(&mut *self.hover_log.borrow_mut());
         if self.resizable {
             self.resize_grip();
+        }
+        // A dica: depois de meio segundo parado na área, um balão embaixo dela.
+        if !std::mem::take(&mut self.mem.tip_seen) || self.mem.popup.is_some() {
+            self.mem.tip = None;
+        } else if let Some((text, r, since)) = self.mem.tip.clone() {
+            let wait = std::time::Duration::from_millis(550);
+            let el = since.elapsed();
+            if el < wait {
+                self.mem.wake_after = Some(self.mem.wake_after.map_or(wait - el, |w| w.min(wait - el)));
+                self.mem.anim_full = true;
+            } else {
+                let px = 11.5;
+                let tw = self.fonts.measure(&text, px, false).min(self.c.w - 16.0);
+                let (bw, bh) = (tw + 14.0, 20.0);
+                let x = r.x.clamp(4.0, (self.c.w - bw - 4.0).max(4.0));
+                let y = if r.y + r.h + 4.0 + bh <= self.c.h - 2.0 { r.y + r.h + 4.0 } else { (r.y - bh - 4.0).max(2.0) };
+                self.c.fill(rrect(x + 1.0, y + 2.0, bw, bh, 4.0), &solid(rgba(0, 0, 0, 40)));
+                self.c.fill(rrect(x, y, bw, bh, 4.0), &solid(rgba(255, 255, 220, 250)));
+                self.c.stroke(rrect(x + 0.5, y + 0.5, bw - 1.0, bh - 1.0, 4.0), &solid(rgba(0, 0, 0, 90)), 1.0);
+                let t = self.fonts.ellipsize(&text, px, false, self.c.w - 16.0);
+                self.fonts.draw(self.c, &t, x + 7.0, y + 14.5, px, false, rgba(20, 20, 20, 255));
+            }
         }
         if let Some(mut p) = self.mem.popup.take() {
             let r = p.rect;

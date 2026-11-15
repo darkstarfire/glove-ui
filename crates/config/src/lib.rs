@@ -1275,6 +1275,8 @@ mod monitor_tests {
 
 /// Apps do Glove que abrem arquivos: (programa, nome, ícone do sistema, tipos MIME).
 const FILE_APPS: &[(&str, &str, &str, &str)] = &[
+    // Pastas: o Arquivos (o "abrir pasta" dos apps de fora, como o Firefox).
+    ("glove-files", "Arquivos", "system-file-manager", "inode/directory;"),
     ("glove-view", "Visualizador", "image-x-generic", "image/png;image/jpeg;image/pjpeg;image/webp;application/pdf;"),
     ("glove-edit", "Editor de Texto", "accessories-text-editor", "text/plain;text/markdown;text/x-csrc;text/x-chdr;text/x-python;text/x-shellscript;application/x-shellscript;text/x-rust;application/json;application/toml;application/xml;text/xml;text/css;text/html;"),
     ("glove-video", "Vídeo", "video-x-generic", "video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;video/ogg;video/x-flv;video/3gpp;"),

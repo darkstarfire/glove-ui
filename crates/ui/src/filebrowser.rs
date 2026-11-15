@@ -349,6 +349,8 @@ impl Ui<'_> {
                     }
                 }
                 let resp = self.hit(row);
+                // O nome inteiro, quando não coube na coluna (achar a ISO certa, por exemplo).
+                self.tooltip_if_cut(row, name, 12.0, false, inner.w - 36.0);
                 if resp.pressed && ok {
                     click = Some((ci, p.clone(), *is_dir, resp.double));
                 }

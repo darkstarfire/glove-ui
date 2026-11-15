@@ -761,3 +761,9 @@ msgstr "Photos"
 
 msgid "Mensagens"
 msgstr "Messages"
+
+msgid "Luz do teclado"
+msgstr "Keyboard light"
+
+msgid "Tela"
+msgstr "Display"
