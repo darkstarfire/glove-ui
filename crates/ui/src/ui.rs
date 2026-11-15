@@ -483,6 +483,11 @@ pub struct Ui<'a> {
     captured: bool,
     /// Widgets desligados por `set_enabled`/`set_active` (não apaga o bloqueio do pop-up).
     disabled: bool,
+    /// Atrás de uma folha (`set_enabled(false)`): os cliques não chegam, e o
+    /// `set_active` dos controles não desfaz isso.
+    sheet_blocked: bool,
+    /// Fora da área visível de uma `scroll_view`: o mesmo, só para o conteúdo dela.
+    clip_blocked: bool,
     /// O mouse está sobre uma área reservada por `reserve` (menu desenhado depois).
     reserved: bool,
     /// Controles desligados de propósito (`set_active(false)`): aparecem apagados.
@@ -507,7 +512,7 @@ impl<'a> Ui<'a> {
     pub(crate) fn new(c: &'a mut Canvas, theme: &'a Theme, fonts: &'a Fonts, doc_fonts: &'a Fonts, resizable: bool, input: &'a Input, mem: &'a mut Memory) -> Self {
         let (w, h) = (c.w, c.h);
         let captured = mem.popup.as_ref().is_some_and(|p| p.rect.contains(input.pos)) || mem.popup.is_some() && input.pressed;
-        let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
+        let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, sheet_blocked: false, clip_blocked: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
         ui.stack.push(Layout { horizontal: false, x0: 0.0, y0: 0.0, cx: 0.0, cy: 0.0, width: w, used_w: 0.0, used_h: 0.0, spacing: 8.0 });
         let _ = h;
         ui
@@ -626,7 +631,7 @@ impl<'a> Ui<'a> {
 
     /// Desliga (ou religa) a interação com os widgets seguintes (ex.: atrás de uma folha).
     pub fn set_enabled(&mut self, on: bool) {
-        self.disabled = !on;
+        self.sheet_blocked = !on;
     }
 
     /// Reserva `r` para um menu que o app desenha por cima no fim do quadro: os
@@ -654,7 +659,7 @@ impl<'a> Ui<'a> {
 
     /// Os widgets agora não recebem o mouse (pop-up aberto, folha por cima, menu reservado).
     fn blocked(&self) -> bool {
-        self.captured || self.disabled || self.reserved
+        self.captured || self.disabled || self.reserved || self.sheet_blocked || self.clip_blocked
     }
 
     /// Liga ou desliga os controles seguintes; desligados, aparecem apagados
@@ -2030,13 +2035,13 @@ impl<'a> Ui<'a> {
         let s = self.c.scale;
         let old_clip = self.c.clip();
         self.c.set_clip(Some([(inner.x * s).floor() as i32, (inner.y * s).floor() as i32, ((inner.x + inner.w) * s).ceil() as i32, ((inner.y + inner.h) * s).ceil() as i32]));
-        let was = self.disabled;
+        let was = self.clip_blocked;
         self.hover_log.borrow_mut().push(inner);
         if !inner.contains(self.input.pos) {
-            self.disabled = true;
+            self.clip_blocked = true;
         }
         let (_, h) = self.child(false, inner.x, inner.y - *offset, inner.w, f);
-        self.disabled = was;
+        self.clip_blocked = was;
         self.c.set_clip(old_clip);
         h
     }
