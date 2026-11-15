@@ -67,6 +67,11 @@ fn load_theme(name: &str) -> Option<Theme> {
     Some(Theme { roots, dirs, inherits })
 }
 
+/// O tema está instalado (alguma pasta de ícones tem o index.theme dele).
+pub fn has_theme(id: &str) -> bool {
+    base_dirs().iter().any(|b| b.join(id).join("index.theme").is_file())
+}
+
 /// Temas instalados com ícones (não os só de cursor): (pasta, nome para mostrar).
 pub fn installed_themes() -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();

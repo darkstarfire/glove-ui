@@ -288,12 +288,7 @@ fn rj45(pm: &mut Canvas, u: U, cx: f32, cy: f32, ang: f32) {
 
 /// Data e Hora: folha da Agenda atrás e o relógio cromado na frente.
 pub(crate) fn date_time(pm: &mut Canvas, fonts: &Fonts, x: f32, y: f32, s: f32) {
-    let (m, d) = unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        (tm.tm_mon as u32 + 1, tm.tm_mday as u32)
-    };
+    let (m, d) = crate::icons::calendar_date();
     crate::tiger::calendar(pm, fonts, x, y, s * 0.72, m, d);
     crate::tiger::clock(pm, fonts, x + s * 0.36, y + s * 0.36, s * 0.64, 10, 9);
 }

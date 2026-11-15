@@ -332,7 +332,38 @@ fn intern(name: &str) -> u32 {
 static THEME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 /// Troca o tema de ícones (chamado ao ler a configuração).
+/// O tema de ícones padrão: o "Glove" em arquivos PNG (gerado pelo `glove-arte` a
+/// partir destes mesmos desenhos e instalado com o Glove). É mais leve que desenhar
+/// cada ícone na hora; os desenhos ficam só para o que o tema não tem e para os
+/// ícones vivos (Agenda com o dia, Relógio, os níveis do Lixo).
+pub const DEFAULT_THEME: &str = "Glove";
+
+/// Data fixa para os calendários (mês × 100 + dia; 0 = hoje).
+static FIXED_DATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Fixa a data dos ícones de calendário (o `glove-arte` gera o tema de ícones com
+/// uma data só, para o tema não mudar conforme o dia em que foi gerado).
+pub fn fix_calendar_date(month: u32, day: u32) {
+    FIXED_DATE.store(month * 100 + day, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// (mês, dia) dos calendários: o de hoje no horário local, ou o fixado.
+pub(crate) fn calendar_date() -> (u32, u32) {
+    let f = FIXED_DATE.load(std::sync::atomic::Ordering::Relaxed);
+    if f > 0 {
+        return (f / 100, f % 100);
+    }
+    unsafe {
+        let t = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        (tm.tm_mon as u32 + 1, tm.tm_mday as u32)
+    }
+}
+
+/// Escolhe o tema (vazio = o padrão; sem o tema instalado, os desenhos).
 pub fn set_theme(name: &str) {
+    let name = if name.is_empty() && crate::sysicons::has_theme(DEFAULT_THEME) { DEFAULT_THEME } else { name };
     if let Ok(mut t) = THEME.lock() {
         if *t != name {
             *t = name.to_string();
@@ -400,8 +431,10 @@ pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: 
         }
         return;
     }
-    // Tema escolhido: os do Glove também (se o tema tiver o equivalente).
-    if !chosen.is_empty() {
+    // Tema escolhido: os do Glove também (se o tema tiver o equivalente). No tema do
+    // próprio Glove, o Lixo cheio fica desenhado (o tema guarda só um nível dele).
+    let live = chosen == DEFAULT_THEME && matches!(icon, Icon::TrashFull(_));
+    if !chosen.is_empty() && !live {
         if let Some(name) = icon.freedesktop_name() {
             if draw_themed(pm, &chosen, name, x, y, s) {
                 return;
@@ -513,13 +546,7 @@ fn draw_raw(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, 
         Icon::Music => crate::tiger_real::music(pm, x, y, s),
         Icon::Contacts => crate::tiger_real::contacts(pm, fonts, x, y, s),
         Icon::Calendar => {
-            // Mês e dia de hoje no horário local.
-            let (m, d) = unsafe {
-                let t = libc::time(std::ptr::null_mut());
-                let mut tm: libc::tm = std::mem::zeroed();
-                libc::localtime_r(&t, &mut tm);
-                (tm.tm_mon as u32 + 1, tm.tm_mday as u32)
-            };
+            let (m, d) = calendar_date();
             crate::tiger::calendar(pm, fonts, x, y, s, m, d)
         }
         Icon::Video => crate::tiger::video(pm, x, y, s),
