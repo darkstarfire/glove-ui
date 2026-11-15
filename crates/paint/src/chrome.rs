@@ -1511,14 +1511,18 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
     }
 }
 
-/// Dois botões de ligar (o ícone da central de controle).
-fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
-    for (k, on) in [(0.0, true), (7.0, false)] {
-        let yy = y + k;
-        c.stroke(rrect(x + 0.6, yy + 0.6, 15.0, 6.0, 3.0), &solid(color), 1.2);
-        let kx = if on { x + 12.5 } else { x + 3.5 };
-        c.fill(circle(kx, yy + 3.6, 2.2), &solid(color));
-    }
+/// Dois botões de ligar (o ícone da central de controle): o de cima claro, com
+/// contorno e a bolinha escura à direita; o de baixo invertido, cheio, com a bolinha
+/// clara à esquerda. `light` é a cor do fundo da barra (para a bolinha "vazada").
+fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color, light: Color) {
+    // Em cima: claro, contorno, bolinha escura à direita.
+    c.fill(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(light));
+    c.stroke(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(color), 1.2);
+    c.fill(circle(x + 12.4, y + 3.8, 2.2), &solid(color));
+    // Embaixo: cheio, bolinha clara à esquerda.
+    let yy = y + 8.0;
+    c.fill(rrect(x + 0.0, yy, 16.2, 7.6, 3.8), &solid(color));
+    c.fill(circle(x + 3.8, yy + 3.8, 2.3), &solid(light));
 }
 
 /// Central de controle: o que ela mostra (None = o computador não tem).
@@ -1868,7 +1872,7 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { analog: Some((h, m)), .. } => clock_glyph(c, a + 14.0, 11.0, *h, *m, col),
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
-            Extra::Control => control_glyph(c, a + 7.0, 4.0, col),
+            Extra::Control => control_glyph(c, a + 7.0, 3.0, col, if is_open { theme.accent } else { rgba(250, 250, 250, 255) }),
             Extra::Notifications { unread, quiet } => {
                 notif_glyph(c, a + 7.0, 4.0, *quiet, col);
                 if *unread > 0 {
