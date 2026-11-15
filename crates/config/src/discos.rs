@@ -115,6 +115,25 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+fn quiet_file() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("glove-silenciosos")
+}
+
+/// Anota que o aparelho vai ser montado só por um instante (o Discos medindo o
+/// espaço usado): a mesa não mostra o ícone nem abre a janela dele. Vale 1 minuto.
+pub fn mark_quiet(dev: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(quiet_file()) {
+        let _ = writeln!(f, "{dev}\t{}", now_secs());
+    }
+}
+
+/// O aparelho está numa montagem silenciosa (anotada há menos de 1 minuto)?
+pub fn is_quiet(dev: &str) -> bool {
+    let now = now_secs();
+    std::fs::read_to_string(quiet_file()).unwrap_or_default().lines().filter_map(|l| l.split_once('\t')).any(|(d, t)| d == dev && t.parse::<u64>().is_ok_and(|t| now.saturating_sub(t) < 60))
+}
+
 /// Anota que o Glove ejetou este aparelho (não é remoção sem ejetar). Vale 2 minutos.
 pub fn mark_ejected(dev: &str) {
     use std::io::Write;
