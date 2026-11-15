@@ -704,12 +704,22 @@ impl<'a> Ui<'a> {
 
     /// Pede ao Glove para o usuário escolher uma área da tela e capturá-la.
     pub fn request_screenshot_area(&mut self, open: bool) {
-        self.mem.glove_cmds.push(format!("SHOT\t300\t{}\t1", open as u8));
+        self.request_screenshot_area_in(300, open);
+    }
+
+    /// O mesmo, começando a escolher daqui a `delay_ms` (a tela congela nessa hora).
+    pub fn request_screenshot_area_in(&mut self, delay_ms: u64, open: bool) {
+        self.mem.glove_cmds.push(format!("SHOT\t{}\t{}\t1", delay_ms.max(300), open as u8));
     }
 
     /// Captura de uma janela: o Glove destaca a janela sob o mouse e o clique a fotografa.
     pub fn request_screenshot_window(&mut self, open: bool) {
-        self.mem.glove_cmds.push(format!("SHOT\t300\t{}\t2", open as u8));
+        self.request_screenshot_window_in(300, open);
+    }
+
+    /// O mesmo, começando daqui a `delay_ms`.
+    pub fn request_screenshot_window_in(&mut self, delay_ms: u64, open: bool) {
+        self.mem.glove_cmds.push(format!("SHOT\t{}\t{}\t2", delay_ms.max(300), open as u8));
     }
 
     /// Põe um arquivo na área de transferência de um jeito que continua valendo
