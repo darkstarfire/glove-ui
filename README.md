@@ -12,6 +12,9 @@ soft shadows), drawn entirely in code, for Wayland apps written in Rust.
 cargo run --release -p glove-ui --example ola
 ```
 
+Needs **Rust 1.86 or newer** (what the dependencies require; *precisa do Rust 1.86 ou mais novo*).
+Some distributions ship an older Rust: install it with [rustup](https://rustup.rs).
+
 | Crate | What it is |
 |---|---|
 | `glove-ui` | Immediate-mode widgets, Wayland windows (layer of smithay-client-toolkit), menus for Glove's global menu bar, Open/Save sheets, printing, drag and drop |
