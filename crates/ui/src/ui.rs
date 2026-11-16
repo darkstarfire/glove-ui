@@ -1468,8 +1468,16 @@ impl<'a> Ui<'a> {
         }
         let (changed, enter) = self.edit_line(id, r, value);
         let focused = self.mem.focus == Some(id);
-        self.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 3.0), &solid(with_alpha(self.theme.accent, if focused { 0.5 } else { 0.25 })));
-        self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(Color::WHITE));
+        if self.theme.modern {
+            if focused {
+                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 7.0), &solid(with_alpha(self.theme.accent, 0.4)));
+            }
+            self.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(self.theme.control_border));
+            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 4.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
+        } else {
+            self.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 3.0), &solid(with_alpha(self.theme.accent, if focused { 0.5 } else { 0.25 })));
+            self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(Color::WHITE));
+        }
         let px = (r.h * 0.62).min(TEXT);
         let base = r.y + r.h / 2.0 + px * 0.36;
         let t = value.clone();
@@ -1494,13 +1502,22 @@ impl<'a> Ui<'a> {
         let (changed, _) = self.edit_line(id, r, value);
         let focused = self.mem.focus == Some(id);
 
-        // Moldura afundada + anel azul quando em foco
-        if focused {
-            self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 5.0), &solid(with_alpha(self.theme.accent, 0.45)));
+        // Moldura afundada + anel azul quando em foco (no moderno: liso e arredondado,
+        // com o anel em volta).
+        if self.theme.modern {
+            if focused {
+                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 7.0), &solid(with_alpha(self.theme.accent, 0.4)));
+            }
+            self.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(self.theme.control_border));
+            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 4.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
+        } else {
+            if focused {
+                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 5.0), &solid(with_alpha(self.theme.accent, 0.45)));
+            }
+            self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(rgba(130, 130, 135, 255)));
+            self.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, &solid(Color::WHITE));
+            self.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, 3.0, &vgrad(r.y + 1.0, r.y + 4.0, &[(0.0, rgba(0, 0, 0, 40)), (1.0, rgba(0, 0, 0, 0))]));
         }
-        self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(rgba(130, 130, 135, 255)));
-        self.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, &solid(Color::WHITE));
-        self.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, 3.0, &vgrad(r.y + 1.0, r.y + 4.0, &[(0.0, rgba(0, 0, 0, 40)), (1.0, rgba(0, 0, 0, 0))]));
         let t = value.clone();
         self.fonts.draw(self.c, &t, r.x + 6.0, r.y + 15.5, TEXT, false, ink());
         if focused {

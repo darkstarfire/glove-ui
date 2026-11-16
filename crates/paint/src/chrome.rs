@@ -1463,6 +1463,7 @@ pub fn force_quit_panel(fonts: &Fonts, theme: &Theme, rows: &[ForceQuitRow], sel
     let (w, h) = (FQ_W, l.h.ceil());
     let m = FQ_SHADOW;
     let mut c = Canvas::new(w + 2.0 * m, h + 2.0 * m, scale)?;
+    let _style = PanelStyle::begin(&mut c);
     if let Some(sh) = Canvas::shadow(-m, -m, w + 2.0 * m, h + 2.0 * m, w, h, &shadow_spec(true), scale) {
         c.draw_canvas(&sh, 0.0, 0.0);
     }
@@ -1712,6 +1713,7 @@ pub fn control_panel(theme: &Theme, fonts: &Fonts, info: &ControlInfo, scale: f3
     let w = CONTROL_W;
     let m = MENU_SHADOW as f32;
     let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
+    let _style = PanelStyle::begin(&mut c);
     let s = ShadowSpec { blur: 10.0, offset_y: 4.0, radius: 10.0, alpha: 0.45 };
     if let Some(sh) = Canvas::shadow(-m, 0.0, w + 2.0 * m, h + m, w, h, &s, scale) {
         c.draw_canvas(&sh, 0.0, 0.0);
@@ -1989,6 +1991,7 @@ pub fn volume_slider(theme: &Theme, level: f32, muted: bool, scale: f32) -> Opti
     let (w, h) = (VOLUME_SLIDER_W, VOLUME_SLIDER_H);
     let m = MENU_SHADOW as f32;
     let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
+    let _style = PanelStyle::begin(&mut c);
     let s = ShadowSpec { blur: 8.0, offset_y: 4.0, radius: 0.0, alpha: 0.45 };
     if let Some(sh) = Canvas::shadow(-m, 0.0, w + 2.0 * m, h + m, w, h, &s, scale) {
         c.draw_canvas(&sh, 0.0, 0.0);
@@ -2248,6 +2251,7 @@ pub fn quick_search(fonts: &Fonts, theme: &Theme, query: &str, caret: bool, rows
     let (w, h) = (QS_W, quick_search_height(rows.len(), query.is_empty(), none).ceil());
     let m = MENU_SHADOW as f32;
     let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
+    let _style = PanelStyle::begin(&mut c);
     let s = ShadowSpec { blur: 8.0, offset_y: 4.0, radius: 0.0, alpha: 0.45 };
     if let Some(sh) = Canvas::shadow(-m, 0.0, w + 2.0 * m, h + m, w, h, &s, scale) {
         c.draw_canvas(&sh, 0.0, 0.0);

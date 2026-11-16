@@ -70,6 +70,25 @@ pub fn set_grad_remap(mode: (bool, bool)) -> (bool, bool) {
     GRAD_REMAP.with(|r| r.replace(mode))
 }
 
+/// Painéis do compositor (central de controle, avisos, busca…) nas aparências modernas:
+/// enquanto a guarda vive, os degradês cinza-claros ficam lisos (e escuros no escuro).
+/// Ao sair, volta o que estava.
+pub struct PanelStyle((bool, bool));
+
+impl PanelStyle {
+    /// Liga para um painel e marca o Canvas dele para o modo escuro.
+    pub fn begin(c: &mut Canvas) -> Self {
+        c.dark_remap = crate::theme::dark();
+        Self(set_grad_remap((crate::theme::dark(), crate::theme::modern())))
+    }
+}
+
+impl Drop for PanelStyle {
+    fn drop(&mut self) {
+        set_grad_remap(self.0);
+    }
+}
+
 /// O cinza claro opaco correspondente no escuro (None = não é um cinza claro).
 fn dark_grey(c: Color) -> Option<Color> {
     let (l, sat) = lum_sat(c);
