@@ -39,7 +39,45 @@ pub fn solid(c: Color) -> Paint<'static> {
 }
 
 fn stops(s: &[(f32, Color)]) -> Vec<GradientStop> {
-    s.iter().map(|(p, c)| GradientStop::new(*p, *c)).collect()
+    let (dark, flat) = GRAD_REMAP.with(|r| r.get());
+    // Moderno: degradê cinza-claro (barras de ferramentas, faixas) vira liso.
+    let flatten = flat && s.len() > 1 && s.iter().all(|(_, c)| c.alpha() >= 0.9 && lum_sat(*c).1 <= 0.12 && lum_sat(*c).0 >= 0.7);
+    let avg = if flatten {
+        let n = s.len() as f32;
+        let (r, g, b) = s.iter().fold((0.0, 0.0, 0.0), |a, (_, c)| (a.0 + c.red() / n, a.1 + c.green() / n, a.2 + c.blue() / n));
+        Some(rgba((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255))
+    } else {
+        None
+    };
+    s.iter()
+        .map(|(p, c)| {
+            let c = avg.unwrap_or(*c);
+            GradientStop::new(*p, if dark { dark_grey(c).unwrap_or(c) } else { c })
+        })
+        .collect()
+}
+
+thread_local! {
+    /// Enquanto um app desenha a janela: degradês cinza-claros viram escuros (modo
+    /// escuro) e lisos (moderno).
+    static GRAD_REMAP: std::cell::Cell<(bool, bool)> = const { std::cell::Cell::new((false, false)) };
+}
+
+/// Troca dos degradês claros nas aparências modernas: (escurecer, alisar). O kit liga
+/// durante o quadro da janela; os ícones desligam enquanto se desenham. Devolve o que
+/// estava.
+pub fn set_grad_remap(mode: (bool, bool)) -> (bool, bool) {
+    GRAD_REMAP.with(|r| r.replace(mode))
+}
+
+/// O cinza claro opaco correspondente no escuro (None = não é um cinza claro).
+fn dark_grey(c: Color) -> Option<Color> {
+    let (l, sat) = lum_sat(c);
+    if c.alpha() < 0.9 || sat > 0.12 || l < 0.7 {
+        return None;
+    }
+    let v = (30.0 + (1.0 - l) * 180.0) as u8;
+    Some(rgba(v, v, v.saturating_add(3), 255))
 }
 
 thread_local! {
@@ -426,6 +464,18 @@ pub struct Canvas {
     /// O recorte não deixa nada à vista: nenhum desenho pinta.
     empty: bool,
     rec: Option<Rec>,
+    /// Aparência escura numa janela de app: o texto quase preto vira claro e os
+    /// fundos cinza-claros opacos (escritos fixos nos apps) viram escuros. Os ícones
+    /// e as imagens ficam como são.
+    pub dark_remap: bool,
+}
+
+/// Luminância simples (0 a 1) e quanto a cor é colorida.
+fn lum_sat(c: Color) -> (f32, f32) {
+    let (r, g, b) = (c.red(), c.green(), c.blue());
+    let l = 0.3 * r + 0.59 * g + 0.11 * b;
+    let sat = r.max(g).max(b) - r.min(g).min(b);
+    (l, sat)
 }
 
 /// a·b/255 arredondado, só com inteiros.
@@ -487,7 +537,42 @@ impl Canvas {
     pub fn new(w: f32, h: f32, scale: f32) -> Option<Self> {
         let pw = (w * scale).ceil().max(1.0) as u32;
         let ph = (h * scale).ceil().max(1.0) as u32;
-        Some(Self { pm: Pixmap::new(pw, ph)?, scale, w, h, saved: Vec::new(), off: (0, 0), region_on: false, clip_on: false, empty_region: false, user_clip: None, region: None, inner: [0, 0, pw as i32, ph as i32], empty: false, rec: None })
+        Some(Self { pm: Pixmap::new(pw, ph)?, scale, w, h, saved: Vec::new(), off: (0, 0), region_on: false, clip_on: false, empty_region: false, user_clip: None, region: None, inner: [0, 0, pw as i32, ph as i32], empty: false, rec: None, dark_remap: false })
+    }
+
+    /// Cor de texto no modo escuro: o preto e os cinzas escuros clareiam (as cores vivas
+    /// e o texto já claro ficam).
+    pub fn remap_ink(&self, c: Color) -> Color {
+        if !self.dark_remap {
+            return c;
+        }
+        let (l, sat) = lum_sat(c);
+        if sat > 0.25 {
+            return c;
+        }
+        let v = if l < 0.3 {
+            232
+        } else if l < 0.55 {
+            (200.0 - (l - 0.3) * 120.0) as u8
+        } else if l < 0.72 {
+            150
+        } else {
+            return c;
+        };
+        rgba(v, v, v.saturating_add(4), (c.alpha() * 255.0) as u8)
+    }
+
+    /// Fundo no modo escuro: cinza-claro ou branco opaco vira grafite (o mais claro
+    /// fica o mais escuro, como numa inversão).
+    fn remap_paint<'a>(&self, p: &Paint<'a>) -> Option<Paint<'a>> {
+        if !self.dark_remap {
+            return None;
+        }
+        let tiny_skia::Shader::SolidColor(c) = p.shader else { return None };
+        let d = dark_grey(c).filter(|_| lum_sat(c).0 >= 0.78)?;
+        let mut q = p.clone();
+        q.shader = tiny_skia::Shader::SolidColor(d);
+        Some(q)
     }
 
     /// Limita o desenho a um retângulo em pixels físicos (`None` = a tela toda).
@@ -768,6 +853,7 @@ impl Canvas {
     }
 
     pub fn clear(&mut self, c: Color) {
+        let c = if self.dark_remap && lum_sat(c).0 >= 0.78 { dark_grey(c).unwrap_or(c) } else { c };
         let mut h = Fp::new(1);
         h.color(c);
         let full = [0, 0, self.px_width() as i32, self.px_height() as i32];
@@ -782,6 +868,8 @@ impl Canvas {
     }
 
     pub fn fill_rule(&mut self, path: Option<Path>, paint: &Paint, rule: FillRule) {
+        let mapped = self.remap_paint(paint);
+        let paint = mapped.as_ref().unwrap_or(paint);
         if let Some(p) = path {
             if self.note_path(2 + rule as u64 * 100, &p, paint, 0.0, 1.0) || !self.path_visible(&p, 1.0) {
                 return;
@@ -829,6 +917,8 @@ impl Canvas {
     }
 
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, paint: &Paint) {
+        let mapped = self.remap_paint(paint);
+        let paint = mapped.as_ref().unwrap_or(paint);
         if self.rec.is_some() {
             let mut k = Fp::new(5);
             for v in [x, y, w, h] {
@@ -1279,6 +1369,12 @@ pub struct ShadowSpec {
 /// Bolha de "gel" redonda: borda escura, corpo com brilho inferior
 /// e reflexo branco na metade de cima.
 pub fn gel_circle(c: &mut Canvas, cx: f32, cy: f32, r: f32, base: Color) {
+    if crate::theme::modern() {
+        let (fill, edge) = modern_colors(base);
+        c.fill(circle(cx, cy, r), &solid(fill));
+        c.stroke(circle(cx, cy, r - 0.5), &solid(edge), 1.0);
+        return;
+    }
     c.fill(circle(cx, cy, r), &solid(darken(base, 0.45)));
     let inner = r - 0.9;
     c.fill(
@@ -1293,8 +1389,35 @@ pub fn gel_circle(c: &mut Canvas, cx: f32, cy: f32, r: f32, base: Color) {
     );
 }
 
+/// No moderno, o "gel" é liso: a cor (as coloridas) ou o fundo de controle (as neutras,
+/// claras no claro e grafite no escuro), com um contorno fino.
+fn modern_colors(base: Color) -> (Color, Color) {
+    let (r, g, b) = (base.red(), base.green(), base.blue());
+    let colored = (r - b).abs() + (g - b).abs() + (r - g).abs() > 0.15;
+    if colored {
+        return (base, with_alpha(darken(base, 0.25), 0.7));
+    }
+    let l = 0.3 * r + 0.59 * g + 0.11 * b;
+    if crate::theme::dark() {
+        // Os mais escuros (apertados) ficam um pouco mais claros no escuro.
+        let v = if l > 0.88 { 92 } else { 112 };
+        (rgba(v, v, v + 4, 255), rgba(255, 255, 255, 30))
+    } else {
+        (if l > 0.88 { rgba(255, 255, 255, 255) } else { darken(base, 0.05) }, rgba(0, 0, 0, 46))
+    }
+}
+
 /// Pílula/retângulo de gel (botões, destaque de menu, barras).
 pub fn gel_rect(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, base: Color) {
+    if crate::theme::modern() {
+        // Moderno: retângulo liso de cantos suaves e uma sombrinha de 1 ponto embaixo.
+        let r = r.min(6.0);
+        let (fill, edge) = modern_colors(base);
+        c.fill(rrect(x, y + 0.5, w, h, r), &solid(rgba(0, 0, 0, if crate::theme::dark() { 60 } else { 18 })));
+        c.fill(rrect(x, y, w, h, r), &solid(fill));
+        c.stroke(rrect(x + 0.5, y + 0.5, w - 1.0, h - 1.0, (r - 0.5).max(0.0)), &solid(edge), 1.0);
+        return;
+    }
     // Vidro polido da era Aqua, em camadas: sombrinha embaixo, borda escura fina,
     // corpo com a cor mais funda logo abaixo do reflexo e acesa embaixo (a luz que
     // atravessa o vidro), um brilho difuso no fundo e o reflexo forte em cima, com
@@ -1340,6 +1463,27 @@ pub fn gel_rect(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, base: Co
 /// `value` de 0 a 1; `None` = indeterminada, com listras diagonais que andam conforme
 /// `phase` (0 a 1 = um período).
 pub fn progress_bar(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, value: Option<f32>, phase: f32, accent: Color) {
+    if crate::theme::modern() {
+        // Moderno: trilho fino e arredondado, preenchimento liso.
+        let th = h.min(6.0);
+        let ty = y + (h - th) / 2.0;
+        let track = if crate::theme::dark() { rgba(70, 70, 74, 255) } else { rgba(220, 220, 224, 255) };
+        c.fill(rrect(x, ty, w, th, th / 2.0), &solid(track));
+        match value {
+            Some(v) => {
+                let fw = (w * v.clamp(0.0, 1.0)).max(th);
+                c.fill(rrect(x, ty, fw, th, th / 2.0), &solid(accent));
+            }
+            None => {
+                // Indeterminada: um pedaço que vai e volta.
+                let seg = w * 0.3;
+                let t = (phase * 2.0) % 2.0;
+                let p = if t < 1.0 { t } else { 2.0 - t };
+                c.fill(rrect(x + (w - seg) * p, ty, seg, th, th / 2.0), &solid(accent));
+            }
+        }
+        return;
+    }
     let r = (h / 4.0).min(3.0);
     c.fill(rrect(x, y, w, h, r), &solid(rgba(150, 150, 156, 255)));
     let (ix, iy, iw, ih) = (x + 1.0, y + 1.0, w - 2.0, h - 2.0);

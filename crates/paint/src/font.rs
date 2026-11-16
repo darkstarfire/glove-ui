@@ -308,6 +308,7 @@ impl Fonts {
         if text.is_empty() {
             return;
         }
+        let color = c.remap_ink(color);
         if c.recording() {
             let mut k = crate::draw::Fp::new(17);
             k.u(self.id);

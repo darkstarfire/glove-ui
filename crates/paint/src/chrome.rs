@@ -73,6 +73,16 @@ pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBar
     let mut c = Canvas::new(w, h, scale)?;
 
     match theme.variant {
+        _ if theme.modern => {
+            // Moderno: liso, da cor da janela (a barra e o corpo parecem uma peça só).
+            let fill = match (theme.dark, st.active) {
+                (true, true) => rgba(54, 54, 58, 255),
+                (true, false) => rgba(44, 44, 48, 255),
+                (false, true) => rgba(232, 232, 235, 255),
+                (false, false) => rgba(244, 244, 246, 255),
+            };
+            c.fill_rect(0.0, 0.0, w, h, &solid(fill));
+        }
         Variant::Metal => {
             let (top, bot) = if st.active {
                 (theme.metal_top, theme.metal_bottom)
@@ -113,13 +123,19 @@ pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBar
             c.pinstripes(0.0, 0.0, w, h, rgba(255, 255, 255, 0), with_alpha(Color::WHITE, a));
         }
     }
-    c.hline(0.0, 0.0, w, rgba(255, 255, 255, 200));
-    let edge = if theme.variant == Variant::Claro { rgba(150, 150, 152, 255) } else { rgba(120, 120, 124, 255) };
+    c.hline(0.0, 0.0, w, if theme.dark { rgba(255, 255, 255, 34) } else { rgba(255, 255, 255, 200) });
+    let edge = if theme.modern {
+        if theme.dark { rgba(22, 22, 24, 255) } else { rgba(206, 206, 210, 255) }
+    } else if theme.variant == Variant::Claro {
+        rgba(150, 150, 152, 255)
+    } else {
+        rgba(120, 120, 124, 255)
+    };
     // Metal: título e barra de ferramentas são uma peça só (sem a linha entre eles).
     if theme.variant != Variant::Metal {
         c.hline(0.0, h - 1.0 / scale, w, edge);
     }
-    c.clip_top_corners(6.0);
+    c.clip_top_corners(if theme.modern { 10.0 } else { 6.0 });
 
     let cy = h / 2.0;
     for (b, cx) in BUTTONS {
@@ -143,12 +159,22 @@ pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBar
             c.fill(oval(cx - BUTTON_R * 0.55, cy - BUTTON_R * 0.85, BUTTON_R * 1.1, BUTTON_R * 0.7), &solid(rgba(255, 255, 255, 170)));
             continue;
         }
-        if !enabled {
+        if theme.modern {
+            // Moderno: bolinhas planas com um contorno fino, sem brilho.
+            let r = BUTTON_R - 0.5;
+            let fill = if enabled { base } else { with_alpha(base, 0.45) };
+            c.fill(circle(cx, cy, r), &solid(fill));
+            c.stroke(circle(cx, cy, r - 0.25), &solid(with_alpha(darken(base, 0.35), if theme.dark { 0.5 } else { 0.35 })), 0.75);
+            if !enabled {
+                continue;
+            }
+        } else if !enabled {
             // Indisponível: o mesmo gel, desbotado.
             gel_circle(&mut c, cx, cy, BUTTON_R, with_alpha(lighten(base, 0.35), 0.4));
             continue;
+        } else {
+            gel_circle(&mut c, cx, cy, BUTTON_R, base);
         }
-        gel_circle(&mut c, cx, cy, BUTTON_R, base);
         // Alterações não salvas: o ponto escuro no meio do botão vermelho.
         if b == TitleButton::Close && st.edited && !st.hover {
             c.fill(circle(cx, cy, 2.3), &solid(with_alpha(darken(base, 0.65), 0.9)));
@@ -181,7 +207,11 @@ pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBar
             icons::draw(&mut c, fonts, icon, ix, cy - 8.0, 16.0, None);
         }
         let color = if st.active { theme.title_text } else { theme.title_text_inactive };
-        fonts.draw_embossed(&mut c, &t, x, 15.5, px, false, color, rgba(255, 255, 255, 180));
+        if theme.modern {
+            fonts.draw(&mut c, &t, x, 15.5, px, true, color);
+        } else {
+            fonts.draw_embossed(&mut c, &t, x, 15.5, px, false, color, rgba(255, 255, 255, 180));
+        }
     }
     // Pílula de vidro que esconde a barra de ferramentas.
     if st.pill {
@@ -200,6 +230,10 @@ pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBar
 pub const SHADOW_M: i32 = 22;
 
 pub fn shadow_spec(active: bool) -> ShadowSpec {
+    if crate::theme::modern() {
+        // Moderno: sombra maior e mais macia, cantos mais redondos.
+        return ShadowSpec { blur: if active { 21.0 } else { 15.0 }, offset_y: if active { 7.0 } else { 4.0 }, radius: 10.0, alpha: if active { 0.55 } else { 0.28 } };
+    }
     ShadowSpec {
         blur: if active { 20.0 } else { 14.0 },
         offset_y: if active { 5.0 } else { 3.0 },
@@ -253,7 +287,12 @@ pub fn menubar(fonts: &Fonts, theme: &Theme, w: f32, titles: &[String], extras: 
     let h = MENUBAR_H as f32;
     let mut c = Canvas::new(w, h, scale)?;
     let claro = theme.variant == Variant::Claro;
-    if claro {
+    let modern = theme.modern;
+    if modern {
+        // Moderno: translúcida (o papel de parede aparece por trás), sem brilho nem linha forte.
+        c.fill_rect(0.0, 0.0, w, h, &solid(if theme.dark { rgba(30, 30, 34, 178) } else { rgba(246, 246, 248, 196) }));
+        c.hline(0.0, h - 1.0 / scale, w, if theme.dark { rgba(0, 0, 0, 90) } else { rgba(0, 0, 0, 30) });
+    } else if claro {
         // Degradê brilhante e liso: branco, um pouco mais escuro no meio, branco de novo.
         c.fill_rect(0.0, 0.0, w, h, &vgrad(0.0, h, &[(0.0, rgba(255, 255, 255, 255)), (0.45, rgba(243, 243, 244, 255)), (0.9, rgba(255, 255, 255, 255))]));
         c.hline(0.0, h - 1.0 / scale, w, rgba(200, 200, 202, 255));
@@ -261,8 +300,12 @@ pub fn menubar(fonts: &Fonts, theme: &Theme, w: f32, titles: &[String], extras: 
         c.pinstripes(0.0, 0.0, w, h, theme.menu_bg_a, theme.menu_bg_b);
         c.hline(0.0, h - 1.0 / scale, w, rgba(0, 0, 0, 110));
     }
+    // No moderno, o aberto ganha um realce arredondado e discreto (o texto não muda de cor).
+    let open_ink = if modern { theme.menu_text } else { Color::WHITE };
     let hot = |c: &mut Canvas, a: f32, b: f32| {
-        if claro {
+        if modern {
+            c.fill(rrect(a + 1.0, 2.0, b - a - 2.0, h - 5.0, 4.0), &solid(if theme.dark { rgba(255, 255, 255, 46) } else { rgba(0, 0, 0, 34) }));
+        } else if claro {
             c.fill_rect(a, 0.0, b - a, h - 1.0, &solid(theme.menu_hot));
         } else {
             c.fill_rect(a, 0.0, b - a, h - 1.0, &vgrad(0.0, h, &[(0.0, lighten(theme.accent, 0.15)), (1.0, darken(theme.accent, 0.15))]));
@@ -273,7 +316,8 @@ pub fn menubar(fonts: &Fonts, theme: &Theme, w: f32, titles: &[String], extras: 
     if open == Some(0) {
         hot(&mut c, logo.0, logo.1);
     }
-    icons::logo(&mut c, 11.0, 2.0, 18.0, if open == Some(0) { lighten(theme.accent, 0.5) } else { theme.accent });
+    let logo_color = if modern { theme.menu_text } else if open == Some(0) { lighten(theme.accent, 0.5) } else { theme.accent };
+    icons::logo(&mut c, 11.0, 2.0, 18.0, logo_color);
 
     let mut x = 40.0;
     let mut ranges = Vec::with_capacity(titles.len());
@@ -285,16 +329,16 @@ pub fn menubar(fonts: &Fonts, theme: &Theme, w: f32, titles: &[String], extras: 
         if is_open {
             hot(&mut c, a, b);
         }
-        fonts.draw(&mut c, t, a + 10.0, 16.0, MENUBAR_PX, bold, if is_open { Color::WHITE } else { theme.menu_text });
+        fonts.draw(&mut c, t, a + 10.0, 16.0, MENUBAR_PX, bold, if is_open { open_ink } else { theme.menu_text });
         ranges.push((a, b));
         x = b;
     }
     // Lupa da Busca Rápida no canto, num quadrado azul quando aberta (como no 10.4).
     let search = (w - 32.0, w);
     if search_open {
-        c.fill_rect(search.0, 0.0, search.1 - search.0, h - 1.0, &vgrad(0.0, h, &[(0.0, lighten(theme.accent, 0.15)), (1.0, darken(theme.accent, 0.15))]));
+        hot(&mut c, search.0, search.1);
     }
-    magnifier_glyph(&mut c, search.0 + 9.0, 4.0, 14.0, if search_open { Color::WHITE } else { theme.menu_text });
+    magnifier_glyph(&mut c, search.0 + 9.0, 4.0, 14.0, if search_open { open_ink } else { theme.menu_text });
     let right = search.0 - 4.0;
     // O relógio pode vir à parte (texto fixo) ou como o último extra (clicável).
     let extras_right = if clock.is_empty() {
@@ -444,14 +488,19 @@ pub fn menu(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usiz
     let m = MENU_SHADOW as f32;
     let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
 
-    // Sombra forte para baixo e cantos retos, como nos menus da era.
-    let s = ShadowSpec { blur: 8.0, offset_y: 4.0, radius: 0.0, alpha: 0.45 };
+    // Sombra forte para baixo e cantos retos, como nos menus da era (no moderno, macia e
+    // com os cantos arredondados).
+    let modern = theme.modern;
+    let rad = if modern { 7.0 } else { 0.0 };
+    let s = if modern { ShadowSpec { blur: 10.0, offset_y: 4.0, radius: rad, alpha: 0.32 } } else { ShadowSpec { blur: 8.0, offset_y: 4.0, radius: 0.0, alpha: 0.45 } };
     if let Some(sh) = Canvas::shadow(-m, 0.0, w + 2.0 * m, h + m, w, h, &s, scale) {
         c.draw_canvas(&sh, 0.0, 0.0);
     }
     let x0 = m;
     let claro = theme.variant == Variant::Claro;
-    if claro {
+    if modern {
+        c.fill(rrect(x0, 0.0, w, h, rad), &solid(theme.menu_bg_a));
+    } else if claro {
         // 10.4: listras quase invisíveis.
         c.fill_rect(x0, 0.0, w, h, &solid(rgba(237, 240, 241, 250)));
         c.pinstripes(x0, 0.0, w, h, rgba(235, 237, 239, 250), rgba(237, 240, 241, 0));
@@ -459,14 +508,20 @@ pub fn menu(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usiz
         c.fill_rect(x0, 0.0, w, h, &solid(rgba(246, 247, 249, 248)));
         c.pinstripes(x0, 0.0, w, h, rgba(246, 247, 249, 0), rgba(230, 232, 234, 235));
     }
-    c.stroke(rrect(x0, 0.0, w, h, 0.0), &solid(rgba(0, 0, 0, 70)), 1.0 / scale);
+    if modern {
+        c.stroke(rrect(x0 + 0.5, 0.5, w - 1.0, h - 1.0, rad), &solid(if theme.dark { rgba(255, 255, 255, 36) } else { rgba(0, 0, 0, 46) }), 1.0 / scale);
+    } else {
+        c.stroke(rrect(x0, 0.0, w, h, 0.0), &solid(rgba(0, 0, 0, 70)), 1.0 / scale);
+    }
 
     let (mw, kw) = shortcut_columns(fonts, items);
     let key_x = x0 + w - 14.0 - kw;
     let mut cy = MENU_PAD;
     for (i, it) in items.iter().enumerate() {
         if it.separator {
-            if theme.variant != Variant::Listras {
+            if modern {
+                c.hline(x0 + 10.0, (cy + SEP_H / 2.0).floor(), w - 20.0, theme.separator);
+            } else if theme.variant != Variant::Listras {
                 let line = if claro { rgba(217, 218, 220, 255) } else { rgba(212, 212, 212, 255) };
                 c.hline(x0 + 1.0, (cy + SEP_H / 2.0).floor(), w - 2.0, line);
             }
@@ -475,7 +530,9 @@ pub fn menu(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usiz
         }
         let hot = hover == Some(i) && it.enabled;
         if hot {
-            if claro {
+            if modern {
+                c.fill(rrect(x0 + 5.0, cy, w - 10.0, MENU_ITEM_H, 4.0), &solid(theme.menu_hot));
+            } else if claro {
                 c.fill_rect(x0, cy, w, MENU_ITEM_H, &solid(theme.menu_hot));
             } else {
                 c.fill_rect(x0, cy, w, MENU_ITEM_H, &vgrad(cy, cy + MENU_ITEM_H, &[(0.0, lighten(theme.accent, 0.2)), (1.0, darken(theme.accent, 0.1))]));
@@ -485,6 +542,8 @@ pub fn menu(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usiz
             Color::WHITE
         } else if it.enabled {
             theme.menu_text
+        } else if theme.dark {
+            rgba(112, 112, 118, 255)
         } else {
             rgba(160, 160, 160, 255)
         };
@@ -870,6 +929,18 @@ pub fn dock_shelf(theme: &Theme, layout: &DockLayout, scene: &DockScene, scale: 
         DockSide::Left => rrect4(sx - 2.0, sy, sw + 2.0, sh, [0.0, 2.0, 2.0, 0.0]),
         DockSide::Right => rrect4(sx, sy, sw + 2.0, sh, [2.0, 0.0, 0.0, 2.0]),
     };
+    if theme.modern {
+        // Moderno: vidro fosco com os cantos todos arredondados e um fio de luz em volta.
+        let inset = 2.0;
+        let glass = match side {
+            DockSide::Bottom => rrect(sx, sy, sw, sh - inset, 14.0),
+            DockSide::Left => rrect(sx + inset, sy, sw - inset, sh, 14.0),
+            DockSide::Right => rrect(sx, sy, sw - inset, sh, 14.0),
+        };
+        c.fill(glass.clone(), &solid(if theme.dark { rgba(44, 44, 48, 170) } else { rgba(246, 246, 248, 150) }));
+        c.stroke(glass, &solid(if theme.dark { rgba(255, 255, 255, 44) } else { rgba(255, 255, 255, 150) }), 1.0 / scale);
+        return Some(c);
+    }
     if theme.variant == Variant::Claro {
         // 10.4: vidro fosco cinza-lilás, quase opaco (o tom não depende do papel
         // de parede), liso e um pouco mais claro em cima.
@@ -911,6 +982,17 @@ pub fn dock_separator(side: DockSide, len: f32, scale: f32) -> Option<Canvas> {
 /// Indicador de app aberto (10 × 7 ou 7 × 10, apontando para longe da borda).
 pub fn dock_indicator(side: DockSide, scale: f32) -> Option<Canvas> {
     let mut c = if side.vertical() { Canvas::new(7.0, 10.0, scale)? } else { Canvas::new(10.0, 7.0, scale)? };
+    if crate::theme::modern() {
+        // Moderno: um pontinho.
+        let col = if crate::theme::dark() { rgba(230, 230, 236, 230) } else { rgba(30, 30, 34, 200) };
+        let (cx, cy) = match side {
+            DockSide::Bottom => (5.0, 4.0),
+            DockSide::Left => (3.0, 5.0),
+            DockSide::Right => (4.0, 5.0),
+        };
+        c.fill(circle(cx, cy, 1.9), &solid(col));
+        return Some(c);
+    }
     let mut pb = tiny_skia::PathBuilder::new();
     match side {
         DockSide::Bottom => {
@@ -1845,7 +1927,7 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
         if is_open {
             hot(c, a, b);
         }
-        let col = if is_open { Color::WHITE } else { theme.menu_text };
+        let col = if is_open && !theme.modern { Color::WHITE } else { theme.menu_text };
         match e {
             Extra::Volume { level, muted } => {
                 let waves = if *muted || *level <= 0.0 { 0 } else { (1.0 + level * 2.99) as u8 };

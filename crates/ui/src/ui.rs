@@ -510,8 +510,17 @@ pub struct Ui<'a> {
 const TEXT: f32 = 13.0;
 const CONTROL_H: f32 = 22.0;
 
+/// Barras de rolagem modernas: o trilho e o puxador (mais forte sob o mouse).
+fn modern_scroll_colors(t: &Theme, hot: bool) -> (Color, Color) {
+    if t.dark {
+        (rgba(36, 36, 39, 255), rgba(255, 255, 255, if hot { 150 } else { 95 }))
+    } else {
+        (rgba(250, 250, 251, 255), rgba(0, 0, 0, if hot { 125 } else { 80 }))
+    }
+}
+
 fn ink() -> Color {
-    rgba(20, 20, 20, 255)
+    if glove_paint::theme::dark() { rgba(232, 232, 236, 255) } else { rgba(20, 20, 20, 255) }
 }
 
 impl<'a> Ui<'a> {
@@ -1050,6 +1059,7 @@ impl<'a> Ui<'a> {
                 None => return,
             },
         };
+        sc.dark_remap = self.c.dark_remap;
         self.c.begin_sub(&mut sc, r.x, r.y);
         sc.clear(Color::TRANSPARENT);
         f(&mut sc, self.fonts);
@@ -1137,7 +1147,8 @@ impl<'a> Ui<'a> {
         let base = if down { darken(base, 0.2) } else { base };
         gel_rect(self.c, r.x, r.y, r.w, r.h, r.h / 2.0, base);
         let tw = self.fonts.measure(t, TEXT, false);
-        let col = if self.dimmed { rgba(150, 150, 154, 255) } else { ink() };
+        // No moderno, o botão principal (azul liso) tem o texto branco.
+        let col = if self.dimmed { rgba(150, 150, 154, 255) } else if self.theme.modern && (down || default) { Color::WHITE } else { ink() };
         self.fonts.draw(self.c, t, r.x + (r.w - tw) / 2.0, r.y + 15.5, TEXT, false, col);
         clicked
     }
@@ -1210,7 +1221,8 @@ impl<'a> Ui<'a> {
             pb.move_to(bx + 3.5, by + 7.5);
             pb.line_to(bx + 6.3, by + 10.5);
             pb.line_to(bx + 11.0, by + 3.5);
-            self.c.stroke(pb.finish(), &solid(rgba(20, 30, 60, 240)), 2.0);
+            let check = if self.theme.modern { Color::WHITE } else { rgba(20, 30, 60, 240) };
+            self.c.stroke(pb.finish(), &solid(check), 2.0);
         }
         let col = if self.dimmed { rgba(150, 150, 154, 255) } else { ink() };
         self.fonts.draw(self.c, t, r.x + 20.0, r.y + 14.0, TEXT, false, col);
@@ -1226,7 +1238,8 @@ impl<'a> Ui<'a> {
         let base = if selected { self.theme.accent } else { rgba(240, 240, 242, 255) };
         gel_circle(self.c, cx, cy, 7.0, if down { darken(base, 0.2) } else { base });
         if selected {
-            self.c.fill(circle(cx, cy + 0.5, 2.8), &solid(rgba(20, 30, 60, 230)));
+            let dot = if self.theme.modern { Color::WHITE } else { rgba(20, 30, 60, 230) };
+            self.c.fill(circle(cx, cy + if self.theme.modern { 0.0 } else { 0.5 }, 2.8), &solid(dot));
         }
         self.fonts.draw(self.c, t, r.x + 20.0, r.y + 14.0, TEXT, false, ink());
         clicked && !selected
@@ -1649,8 +1662,10 @@ impl<'a> Ui<'a> {
     }
 
     fn segments(&mut self, r: Rect, labels: &[SegLabel], widths: &[f32], selected: Option<usize>, enabled: &[bool]) -> Option<usize> {
-        let rad = 4.0;
-        self.c.fill(rrect(r.x, r.y, r.w, r.h, rad), &solid(rgba(132, 132, 138, 255)));
+        let rad = if self.theme.modern { 6.0 } else { 4.0 };
+        let modern = self.theme.modern;
+        let outline = if modern { self.theme.control_border } else { rgba(132, 132, 138, 255) };
+        self.c.fill(rrect(r.x, r.y, r.w, r.h, rad), &solid(outline));
         let inner = || rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, rad - 1.0);
         let mut out = None;
         let a = self.theme.accent;
@@ -1671,11 +1686,28 @@ impl<'a> Ui<'a> {
                 [(0.0, rgba(253, 253, 253, 255)), (0.48, rgba(242, 242, 242, 255)), (0.52, rgba(232, 232, 232, 255)), (1.0, rgba(246, 246, 246, 255))]
             };
             let stops = stops.map(|(t, c)| (t, if down { darken(c, 0.15) } else { c }));
-            self.c.fill_clipped(rrect(seg.x, r.y, seg.w, r.h, 0.0), &vgrad(r.y, r.y + r.h, &stops), inner());
-            if i > 0 {
-                self.c.vline(seg.x, r.y + 1.0, r.h - 2.0, rgba(150, 150, 156, 255));
+            if modern {
+                // Moderno: liso; o escolhido em cinza mais forte.
+                let bg = match (self.theme.dark, sel || down) {
+                    (true, true) => rgba(118, 118, 124, 255),
+                    (true, false) => rgba(78, 78, 82, 255),
+                    (false, true) => rgba(212, 212, 216, 255),
+                    (false, false) => rgba(255, 255, 255, 255),
+                };
+                self.c.fill_clipped(rrect(seg.x, r.y, seg.w, r.h, 0.0), &solid(bg), inner());
+            } else {
+                self.c.fill_clipped(rrect(seg.x, r.y, seg.w, r.h, 0.0), &vgrad(r.y, r.y + r.h, &stops), inner());
             }
-            let color = if on { rgba(30, 30, 34, 255) } else { rgba(165, 165, 170, 255) };
+            if i > 0 {
+                self.c.vline(seg.x, r.y + 1.0, r.h - 2.0, if modern { self.theme.control_border } else { rgba(150, 150, 156, 255) });
+            }
+            let color = if !on {
+                if self.theme.dark { rgba(110, 110, 116, 255) } else { rgba(165, 165, 170, 255) }
+            } else if modern {
+                self.theme.text
+            } else {
+                rgba(30, 30, 34, 255)
+            };
             match label {
                 SegLabel::Glyph(g) => icons::glyph(self.c, *g, (seg.x + seg.w / 2.0).round(), (r.y + r.h / 2.0).round(), 12.0, color),
                 SegLabel::Text(t) => {
@@ -2107,7 +2139,7 @@ impl<'a> Ui<'a> {
         let id = self.next_id();
         let max = (content - view).max(0.0);
         let aw = SCROLL_ARROW_H;
-        let arrows = sb.w >= 2.0 * aw + 30.0;
+        let arrows = sb.w >= 2.0 * aw + 30.0 && !self.theme.modern;
         let track = Rect::new(sb.x, sb.y, sb.w - if arrows { 2.0 * aw } else { 0.0 }, sb.h);
         let left = Rect::new(track.x + track.w, sb.y, aw, sb.h);
         let right = Rect::new(left.x + aw, sb.y, aw, sb.h);
@@ -2143,6 +2175,19 @@ impl<'a> Ui<'a> {
         }
         *offset = offset.clamp(0.0, max);
         let (accent, grabbed) = (self.theme.accent, self.mem.slider_grab == Some(grab));
+        if self.theme.modern {
+            // Moderno: trilho liso e o puxador fino e arredondado, sem setas.
+            let (track_bg, thumb) = modern_scroll_colors(self.theme, grabbed || self.hovered(sb));
+            let c = &mut *self.c;
+            c.fill_rect(sb.x, sb.y, sb.w, sb.h, &solid(track_bg));
+            c.hline(sb.x, sb.y, sb.w, self.theme.separator);
+            if max > 0.0 {
+                let tx = thumb_x(*offset);
+                let th = 7.0;
+                c.fill(rrect(tx + 2.0, sb.y + (sb.h - th) / 2.0, (thumb_w - 4.0).max(th), th, th / 2.0), &solid(thumb));
+            }
+            return;
+        }
         let c = &mut *self.c;
         c.fill_rect(sb.x, sb.y, sb.w, sb.h, &vgrad(sb.y, sb.y + sb.h, &[(0.0, rgba(200, 200, 204, 255)), (0.35, rgba(238, 238, 240, 255)), (1.0, rgba(226, 226, 230, 255))]));
         c.hline(sb.x, sb.y, sb.w, rgba(150, 150, 156, 255));
@@ -2173,7 +2218,7 @@ impl<'a> Ui<'a> {
     fn vscrollbar(&mut self, id: Id, sb: Rect, offset: &mut f32, content: f32, view: f32, line: f32) {
         use std::time::{Duration, Instant};
         let max = (content - view).max(0.0);
-        let arrows = sb.h >= 2.0 * SCROLL_ARROW_H + 30.0;
+        let arrows = sb.h >= 2.0 * SCROLL_ARROW_H + 30.0 && !self.theme.modern;
         let track = Rect::new(sb.x, sb.y, sb.w, sb.h - if arrows { 2.0 * SCROLL_ARROW_H } else { 0.0 });
         let up = Rect::new(sb.x, track.y + track.h, sb.w, SCROLL_ARROW_H);
         let down = Rect::new(sb.x, up.y + SCROLL_ARROW_H, sb.w, SCROLL_ARROW_H);
@@ -2247,6 +2292,19 @@ impl<'a> Ui<'a> {
         let lit_down = self.input.down && held == Some(down_id) && self.hovered(down);
         let (accent, grabbed) = (self.theme.accent, self.mem.slider_grab == Some(grab));
 
+        if self.theme.modern {
+            let (track_bg, thumb) = modern_scroll_colors(self.theme, grabbed || self.hovered(sb));
+            let c = &mut *self.c;
+            c.fill_rect(sb.x, sb.y, sb.w, sb.h, &solid(track_bg));
+            c.vline(sb.x, sb.y, sb.h, self.theme.separator);
+            if max > 0.0 {
+                let ty = thumb_y(*offset);
+                let tw = 7.0;
+                c.fill(rrect(sb.x + (sb.w - tw) / 2.0, ty + 2.0, tw, (thumb_h - 4.0).max(tw), tw / 2.0), &solid(thumb));
+            }
+            let _ = (lit_up, lit_down, accent);
+            return;
+        }
         // Trilho em relevo com listras leves
         let c = &mut *self.c;
         c.fill_rect(sb.x, sb.y, sb.w, sb.h, &linear(sb.x, 0.0, sb.x + sb.w, 0.0, &[(0.0, rgba(200, 200, 204, 255)), (0.35, rgba(238, 238, 240, 255)), (1.0, rgba(226, 226, 230, 255))]));
@@ -2749,6 +2807,7 @@ impl<'a> Ui<'a> {
                 None => return changed,
             },
         };
+        sc.dark_remap = self.c.dark_remap;
         self.c.begin_sub(&mut sc, tr.x, tr.y);
         sc.clear(buf.paper.map(|(r, g, b)| rgba(r, g, b, 255)).unwrap_or(Color::WHITE));
         let (sel_a, sel_b) = buf.selection();

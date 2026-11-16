@@ -16,10 +16,15 @@ pub enum Variant {
     Metal,
     /// Listras com acentos em grafite, mais sóbrio.
     Grafite,
+    /// Moderno (claro): liso, cantos arredondados, sem gel nem listras, barras
+    /// translúcidas e controles planos (a geração de 2021, não a mais nova).
+    Moderno,
+    /// Moderno escuro: o mesmo, em cinza-grafite com o texto claro.
+    ModernoEscuro,
 }
 
 impl Variant {
-    pub const ALL: [Variant; 4] = [Variant::Claro, Variant::Listras, Variant::Metal, Variant::Grafite];
+    pub const ALL: [Variant; 6] = [Variant::Claro, Variant::Listras, Variant::Metal, Variant::Grafite, Variant::Moderno, Variant::ModernoEscuro];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -27,7 +32,14 @@ impl Variant {
             Variant::Listras => "listras",
             Variant::Metal => "metal",
             Variant::Grafite => "grafite",
+            Variant::Moderno => "moderno",
+            Variant::ModernoEscuro => "moderno-escuro",
         }
+    }
+
+    /// Uma das aparências modernas (claras ou escura).
+    pub fn modern(self) -> bool {
+        matches!(self, Variant::Moderno | Variant::ModernoEscuro)
     }
 
     pub fn label(self) -> &'static str {
@@ -36,6 +48,8 @@ impl Variant {
             Variant::Listras => tr!("Listras"),
             Variant::Metal => tr!("Metal"),
             Variant::Grafite => tr!("Grafite"),
+            Variant::Moderno => tr!("Moderno Claro"),
+            Variant::ModernoEscuro => tr!("Moderno Escuro"),
         }
     }
 
@@ -76,6 +90,37 @@ pub struct Theme {
     pub wallpaper: [Color; 3],
     /// Fundo do texto selecionado (cor de destaque do painel Aparência).
     pub highlight: Color,
+    /// Aparência moderna (lisa) e escura.
+    pub modern: bool,
+    pub dark: bool,
+    /// Texto comum, texto secundário e o fundo de listas, campos e tabelas.
+    pub text: Color,
+    pub text_dim: Color,
+    pub list_bg: Color,
+    /// Fundo dos controles (botões, listas suspensas) e a borda deles.
+    pub control_bg: Color,
+    pub control_border: Color,
+    /// Linhas finas de separação.
+    pub separator: Color,
+}
+
+/// O estilo do processo (o tema principal que ele mostra): os desenhos que não recebem
+/// o tema (sombras, controles avulsos, a troca de cores do modo escuro) consultam aqui.
+static STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Guarda o estilo do tema principal (chamado por quem monta o tema da configuração).
+pub fn set_style(t: &Theme) {
+    STYLE.store(u8::from(t.modern) | (u8::from(t.dark) << 1), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// O processo está numa aparência moderna?
+pub fn modern() -> bool {
+    STYLE.load(std::sync::atomic::Ordering::Relaxed) & 1 != 0
+}
+
+/// O processo está na aparência escura?
+pub fn dark() -> bool {
+    STYLE.load(std::sync::atomic::Ordering::Relaxed) & 2 != 0
 }
 
 pub const TITLE_H: i32 = 22;
@@ -91,7 +136,7 @@ impl Theme {
             (rgba(230, 70, 60, 255), rgba(240, 180, 40, 255), rgba(80, 190, 70, 255))
         };
         let wallpaper = match variant {
-            Variant::Claro | Variant::Listras => [rgba(10, 40, 110, 255), rgba(30, 95, 200, 255), rgba(140, 200, 255, 255)],
+            Variant::Claro | Variant::Listras | Variant::Moderno | Variant::ModernoEscuro => [rgba(10, 40, 110, 255), rgba(30, 95, 200, 255), rgba(140, 200, 255, 255)],
             Variant::Metal => [rgba(8, 28, 70, 255), rgba(40, 80, 160, 255), rgba(170, 200, 240, 255)],
             Variant::Grafite => [rgba(35, 40, 52, 255), rgba(85, 95, 115, 255), rgba(190, 200, 215, 255)],
         };
@@ -118,6 +163,65 @@ impl Theme {
             body_b: if claro { rgba(243, 243, 243, 255) } else { rgba(242, 242, 242, 255) },
             wallpaper,
             highlight: if graphite { rgba(199, 208, 219, 255) } else { rgba(181, 213, 255, 255) },
+            modern: false,
+            dark: false,
+            text: rgba(20, 20, 24, 255),
+            text_dim: rgba(110, 110, 116, 255),
+            list_bg: rgba(255, 255, 255, 255),
+            control_bg: rgba(255, 255, 255, 255),
+            control_border: rgba(150, 150, 156, 255),
+            separator: rgba(190, 190, 194, 255),
         }
+        .modernize(variant)
+    }
+
+    /// As aparências modernas: liso, sem listras nem gel; o escuro em grafite.
+    fn modernize(mut self, variant: Variant) -> Self {
+        if !variant.modern() {
+            return self;
+        }
+        let dark = variant == Variant::ModernoEscuro;
+        self.modern = true;
+        self.dark = dark;
+        self.accent = rgba(10, 122, 255, 255);
+        self.close = rgba(255, 95, 87, 255);
+        self.minimize = rgba(254, 188, 46, 255);
+        self.zoom = rgba(40, 200, 64, 255);
+        self.menu_hot = rgba(10, 122, 255, 255);
+        self.highlight = if dark { rgba(30, 80, 150, 255) } else { rgba(179, 215, 255, 255) };
+        if dark {
+            self.inactive_button = rgba(88, 88, 92, 255);
+            self.title_text = rgba(226, 226, 230, 255);
+            self.title_text_inactive = rgba(140, 140, 146, 255);
+            let bg = rgba(38, 38, 41, 255);
+            (self.stripe_a, self.stripe_b, self.body_a, self.body_b) = (bg, bg, bg, bg);
+            (self.metal_top, self.metal_bottom) = (rgba(56, 56, 60, 255), rgba(48, 48, 52, 255));
+            (self.menu_bg_a, self.menu_bg_b) = (rgba(44, 44, 48, 246), rgba(44, 44, 48, 246));
+            self.menu_text = rgba(236, 236, 240, 255);
+            self.text = rgba(232, 232, 236, 255);
+            self.text_dim = rgba(152, 152, 158, 255);
+            self.list_bg = rgba(30, 30, 32, 255);
+            self.control_bg = rgba(80, 80, 84, 255);
+            self.control_border = rgba(96, 96, 102, 255);
+            self.separator = rgba(70, 70, 74, 255);
+            self.wallpaper = [rgba(12, 16, 32, 255), rgba(40, 52, 96, 255), rgba(120, 130, 190, 255)];
+        } else {
+            self.inactive_button = rgba(208, 208, 212, 255);
+            self.title_text = rgba(38, 38, 42, 255);
+            self.title_text_inactive = rgba(160, 160, 166, 255);
+            let bg = rgba(236, 236, 238, 255);
+            (self.stripe_a, self.stripe_b, self.body_a, self.body_b) = (bg, bg, bg, bg);
+            (self.metal_top, self.metal_bottom) = (rgba(240, 240, 242, 255), rgba(230, 230, 233, 255));
+            (self.menu_bg_a, self.menu_bg_b) = (rgba(246, 246, 248, 246), rgba(246, 246, 248, 246));
+            self.menu_text = rgba(24, 24, 28, 255);
+            self.text = rgba(24, 24, 28, 255);
+            self.text_dim = rgba(120, 120, 126, 255);
+            self.list_bg = rgba(255, 255, 255, 255);
+            self.control_bg = rgba(255, 255, 255, 255);
+            self.control_border = rgba(196, 196, 200, 255);
+            self.separator = rgba(214, 214, 218, 255);
+            self.wallpaper = [rgba(30, 60, 140, 255), rgba(90, 120, 210, 255), rgba(200, 180, 230, 255)];
+        }
+        self
     }
 }

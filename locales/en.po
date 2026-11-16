@@ -767,3 +767,9 @@ msgstr "Keyboard light"
 
 msgid "Tela"
 msgstr "Display"
+
+msgid "Moderno Claro"
+msgstr "Modern Light"
+
+msgid "Moderno Escuro"
+msgstr "Modern Dark"

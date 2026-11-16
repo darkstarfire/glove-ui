@@ -135,6 +135,7 @@ pub fn theme_from_config() -> Theme {
     let c = glove_config::Config::load();
     glove_paint::icons::set_theme(&c.appearance.icon_theme);
     let mut t = Theme::new(Variant::from_config(&c.theme));
+    glove_paint::theme::set_style(&t);
     let (r, g, b) = glove_config::highlight_rgb(&c.appearance.highlight);
     t.highlight = glove_paint::draw::rgba(r, g, b, 255);
     // Ajustes que o kit lê a cada clique (clique duplo, trilho da rolagem).
@@ -710,6 +711,8 @@ impl<A: App> Runner<A> {
             let reuse = self.w.canvas.take().filter(|c| c.w == self.w.width as f32 && c.h == self.w.height as f32 && c.scale == scale);
             partial &= reuse.is_some();
             let Some(mut canvas) = reuse.or_else(|| Canvas::new(self.w.width as f32, self.w.height as f32, scale)) else { return };
+            canvas.dark_remap = glove_paint::theme::dark();
+            glove_paint::draw::set_grad_remap((canvas.dark_remap, glove_paint::theme::modern()));
             let region = partial.then(|| px_union(&anim_rects, scale));
             canvas.set_clip(None);
             canvas.set_region(region);
@@ -810,6 +813,8 @@ impl<A: App> Runner<A> {
                 self.w.ops_valid = false;
             }
             let Some(mut canvas) = reuse.or_else(|| Canvas::new(self.w.width as f32, self.w.height as f32, scale)) else { return };
+            canvas.dark_remap = glove_paint::theme::dark();
+            glove_paint::draw::set_grad_remap((canvas.dark_remap, glove_paint::theme::modern()));
             canvas.set_clip(None);
             canvas.set_region(None);
             canvas.start_record(true);

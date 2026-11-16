@@ -439,6 +439,15 @@ fn draw_themed(pm: &mut Canvas, theme: &str, name: &str, x: f32, y: f32, s: f32)
 
 /// Desenha o ícone ocupando o quadrado (x, y, s, s).
 pub fn draw(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, letter: Option<char>) {
+    // Os ícones ficam com as cores deles também no modo escuro.
+    let remap = std::mem::replace(&mut pm.dark_remap, false);
+    let grad = crate::draw::set_grad_remap((false, false));
+    draw_icon(pm, fonts, icon, x, y, s, letter);
+    crate::draw::set_grad_remap(grad);
+    pm.dark_remap = remap;
+}
+
+fn draw_icon(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, letter: Option<char>) {
     // Os ícones novos (estilo Tiger) já têm a sombra no formato do objeto.
     if icon.tiger_style() {
         draw_bare(pm, fonts, icon, x, y, s, letter);
