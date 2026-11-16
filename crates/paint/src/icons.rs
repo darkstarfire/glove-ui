@@ -868,6 +868,14 @@ pub enum Glyph {
     Sidebar,
     /// Lápis inclinado (desenhar por cima).
     Pencil,
+    /// Formas de desenho: traço livre (rabisco), linha, linha tracejada, seta,
+    /// retângulo e elipse.
+    ShapeFree,
+    ShapeLine,
+    ShapeDashed,
+    ShapeArrow,
+    ShapeRect,
+    ShapeEllipse,
 }
 
 /// Desenha o glifo centrado em (cx, cy), num quadrado de `s` pontos.
@@ -923,6 +931,39 @@ pub fn glyph(pm: &mut Canvas, g: Glyph, cx: f32, cy: f32, s: f32, color: Color) 
             tip.line_to(ax + t * 0.5, ay - t * 1.9);
             tip.close();
             pm.fill(tip.finish(), &ink);
+        }
+        Glyph::ShapeFree => {
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - h * 0.85, cy + h * 0.35);
+            pb.cubic_to(cx - h * 0.5, cy - h * 0.9, cx - h * 0.05, cy - h * 0.1, cx + h * 0.05, cy + h * 0.2);
+            pb.cubic_to(cx + h * 0.2, cy + h * 0.7, cx + h * 0.6, cy - h * 0.2, cx + h * 0.85, cy - h * 0.55);
+            pm.stroke_round(pb.finish(), &ink, 1.5);
+        }
+        Glyph::ShapeLine | Glyph::ShapeDashed | Glyph::ShapeArrow => {
+            let (ax, ay, bx, by) = (cx - h * 0.8, cy + h * 0.8, cx + h * 0.8, cy - h * 0.8);
+            let mut pb = PathBuilder::new();
+            if g == Glyph::ShapeDashed {
+                for i in 0..4 {
+                    let (t0, t1) = (i as f32 / 3.6, (i as f32 + 0.55) / 3.6);
+                    pb.move_to(ax + (bx - ax) * t0, ay + (by - ay) * t0);
+                    pb.line_to(ax + (bx - ax) * t1.min(1.0), ay + (by - ay) * t1.min(1.0));
+                }
+            } else {
+                pb.move_to(ax, ay);
+                pb.line_to(bx, by);
+            }
+            if g == Glyph::ShapeArrow {
+                pb.move_to(bx - h * 0.62, by);
+                pb.line_to(bx, by);
+                pb.line_to(bx, by + h * 0.62);
+            }
+            pm.stroke_round(pb.finish(), &ink, 1.5);
+        }
+        Glyph::ShapeRect => {
+            pm.stroke(rrect(cx - h * 0.85 + 0.5, cy - h * 0.62 + 0.5, s * 0.85 - 1.0, s * 0.62 - 1.0, 0.5), &ink, 1.5);
+        }
+        Glyph::ShapeEllipse => {
+            pm.stroke(oval(cx - h * 0.88, cy - h * 0.66, s * 0.88, s * 0.66), &ink, 1.5);
         }
         Glyph::Sidebar => {
             pm.stroke(rrect(cx - h + 0.5, cy - h * 0.75 + 0.5, s - 1.0, s * 0.75 * 2.0 - 1.0, 1.0), &ink, 1.0);
