@@ -152,23 +152,34 @@ impl Ui<'_> {
         let row = 17.0;
         p.scroll = (p.scroll - self.scroll_in(lr)).clamp(0.0, (list.len() as f32 * row - lr.h).max(0.0));
         let first = (p.scroll / row) as usize;
-        for (i, fam) in list.iter().enumerate().skip(first).take((lr.h / row) as usize + 1) {
+        // A linha cortada em cima (ou embaixo) fica dentro da lista, sem passar por cima
+        // do campo de busca: recorte na área da lista (dentro do recorte de antes).
+        let old_clip = self.c.clip();
+        let sc = self.c.scale;
+        let mut cl = [((lr.x + 1.0) * sc).floor() as i32, ((lr.y + 1.0) * sc).floor() as i32, ((lr.x + lr.w - 1.0) * sc).ceil() as i32, ((lr.y + lr.h - 1.0) * sc).ceil() as i32];
+        if let Some(o) = old_clip {
+            cl = [cl[0].max(o[0]), cl[1].max(o[1]), cl[2].min(o[2]), cl[3].min(o[3])];
+        }
+        self.c.set_clip(Some(cl));
+        for (i, fam) in list.iter().enumerate().skip(first).take((lr.h / row) as usize + 2) {
             let y = lr.y + i as f32 * row - p.scroll;
-            if y + row > lr.y + lr.h + 1.0 {
+            if y > lr.y + lr.h {
                 break;
             }
             let rr = Rect::new(lr.x + 1.0, y, lr.w - 2.0, row);
             let on = **fam == p.family;
             if on {
-                self.c.fill_rect(rr.x, rr.y.max(lr.y), rr.w, row, &solid(self.theme.accent));
+                self.c.fill_rect(rr.x, rr.y, rr.w, row, &solid(self.theme.accent));
             }
             let t = self.fonts.ellipsize(fam, 11.0, false, rr.w - 8.0);
             self.fonts.draw(self.c, &t, rr.x + 4.0, y + 12.5, 11.0, false, if on { Color::WHITE } else { rgba(20, 20, 24, 255) });
-            if self.hit(rr).clicked && !on {
+            let vis = Rect::new(rr.x, rr.y.max(lr.y), rr.w, (rr.y + rr.h).min(lr.y + lr.h) - rr.y.max(lr.y));
+            if vis.h > 0.0 && self.hit(vis).clicked && !on {
                 p.family = fam.to_string();
                 changed = true;
             }
         }
+        self.c.set_clip(old_clip);
         let sr = Rect::new(body.x + body.w - 60.0, ly, 60.0, 150.0);
         self.c.fill_rect(sr.x, sr.y, sr.w, sr.h, &solid(Color::WHITE));
         self.c.stroke(rrect(sr.x + 0.5, sr.y + 0.5, sr.w - 1.0, sr.h - 1.0, 0.0), &solid(rgba(150, 150, 156, 255)), 1.0);
