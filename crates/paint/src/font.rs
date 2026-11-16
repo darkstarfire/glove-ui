@@ -12,15 +12,19 @@ use tiny_skia::Color;
 
 use crate::draw::Canvas;
 
+// Onde as distribuições guardam a fonte: Debian/Ubuntu (truetype/dejavu), Arch e
+// Slackware (TTF), Fedora (dejavu-sans-fonts). Nas outras, o fontconfig responde (`load`).
 const REGULAR: &[&str] = &[
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
 ];
 const BOLD: &[&str] = &[
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
 ];
@@ -57,8 +61,11 @@ fn open_font(path: &std::path::Path, index: u32) -> Option<FontVec> {
     FontRef::try_from_slice_and_index(map_file(path)?, index).ok()
 }
 
-fn load(paths: &[&str]) -> Option<FontVec> {
-    paths.iter().find_map(|p| open_font(std::path::Path::new(p), 0))
+/// A fonte: primeiro nos lugares conhecidos (sem rodar nada). Numa distribuição que a
+/// guarda noutra pasta, o fontconfig diz onde está a família (ou a mais parecida que
+/// houver): sem isto, o Glove nem abria onde a pasta não estava na lista (o Fedora).
+fn load(paths: &[&str], family: &str) -> Option<FontVec> {
+    paths.iter().find_map(|p| open_font(std::path::Path::new(p), 0)).or_else(|| fc_match(family).and_then(|p| open_font(&p, 0)))
 }
 
 /// Bitmap de um caractere já rasterizado.
@@ -98,6 +105,12 @@ fn new_fonts(regular: FontVec, bold: Option<FontVec>) -> Fonts {
 }
 
 /// Arquivo de uma família de fonte instalada (via fontconfig).
+/// O arquivo da fonte que o fontconfig escolhe para o padrão (ex.: "Liberation
+/// Sans:bold"); None sem o fontconfig. Para quem precisa do arquivo (o PDF do Editor).
+pub fn font_file(pattern: &str) -> Option<std::path::PathBuf> {
+    fc_match(pattern)
+}
+
 fn fc_match(pattern: &str) -> Option<std::path::PathBuf> {
     let out = std::process::Command::new("fc-match").args(["-f", "%{file}", pattern]).output().ok()?;
     let p = std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
@@ -136,23 +149,27 @@ fn fallback_fonts() -> Vec<(String, std::cell::OnceCell<Option<FontVec>>)> {
 const DOC_REGULAR: &[&str] = &[
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
     "/usr/share/fonts/TTF/LiberationSans-Regular.ttf",
 ];
 const DOC_BOLD: &[&str] = &[
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     "/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf",
     "/usr/share/fonts/TTF/LiberationSans-Bold.ttf",
 ];
 
 const MONO_REGULAR: &[&str] = &[
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
     "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+    "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
     "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
 ];
 const MONO_BOLD: &[&str] = &[
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
     "/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
     "/usr/share/fonts/truetype/ubuntu/UbuntuMono-B.ttf",
 ];
@@ -203,7 +220,7 @@ impl Fonts {
 
     /// Fonte de largura fixa (terminal).
     pub fn load_mono() -> Option<Self> {
-        Some(new_fonts(load(MONO_REGULAR)?, load(MONO_BOLD)))
+        Some(new_fonts(load(MONO_REGULAR, "DejaVu Sans Mono,monospace")?, load(MONO_BOLD, "DejaVu Sans Mono,monospace:bold")))
     }
 
     /// Métricas da fonte em `px`: (avanço de um caractere, subida acima da linha de base).
@@ -214,13 +231,13 @@ impl Fonts {
     }
 
     pub fn load_system() -> Option<Self> {
-        Some(new_fonts(load(REGULAR)?, load(BOLD)))
+        Some(new_fonts(load(REGULAR, "DejaVu Sans,sans-serif")?, load(BOLD, "DejaVu Sans,sans-serif:bold")))
     }
 
     /// Fonte para o texto dos documentos (sem serifa, mais estreita que a da interface).
     pub fn load_document() -> Option<Self> {
-        match load(DOC_REGULAR) {
-            Some(regular) => Some(new_fonts(regular, load(DOC_BOLD))),
+        match load(DOC_REGULAR, "Liberation Sans,sans-serif") {
+            Some(regular) => Some(new_fonts(regular, load(DOC_BOLD, "Liberation Sans,sans-serif:bold"))),
             None => Self::load_system(),
         }
     }
@@ -383,5 +400,19 @@ impl Fonts {
     pub fn draw_embossed(&self, c: &mut Canvas, text: &str, x: f32, baseline: f32, px: f32, bold: bool, color: Color, light: Color) {
         self.draw(c, text, x, baseline + 1.0, px, bold, light);
         self.draw(c, text, x, baseline, px, bold, color);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Numa distribuição que guarda a fonte noutra pasta (nenhum dos caminhos conhecidos
+    /// existe), o fontconfig acha: era o que faltava no Fedora.
+    #[test]
+    fn fonte_pelo_fontconfig() {
+        if std::process::Command::new("fc-match").arg("--version").output().is_err() {
+            return;
+        }
+        assert!(super::load(&["/nao/existe/Fonte.ttf"], "DejaVu Sans,sans-serif").is_some());
+        assert!(super::load(&["/nao/existe/Fonte.ttf"], "DejaVu Sans Mono,monospace:bold").is_some());
     }
 }
