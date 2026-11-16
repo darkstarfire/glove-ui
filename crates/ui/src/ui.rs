@@ -2094,6 +2094,13 @@ impl<'a> Ui<'a> {
         Rect::new(area.x, area.y, area.w - SCROLLBAR_W, area.h)
     }
 
+    /// Barra de rolagem vertical avulsa em `sb` (para quem cuida da própria rolagem, como
+    /// uma imagem com zoom). `offset` vai de 0 a `content - view`.
+    pub fn vscrollbar_in(&mut self, sb: Rect, offset: &mut f32, content: f32, view: f32, line: f32) {
+        let id = self.next_id();
+        self.vscrollbar(id, sb, offset, content, view, line);
+    }
+
     /// Barra de rolagem horizontal em `sb` (as duas setas juntas à direita, como a vertical).
     /// `offset` vai de 0 a `content - view`.
     pub fn hscrollbar(&mut self, sb: Rect, offset: &mut f32, content: f32, view: f32, line: f32) {

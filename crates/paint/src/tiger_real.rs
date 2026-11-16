@@ -965,9 +965,9 @@ pub(crate) fn editor(pm: &mut Canvas, x: f32, y: f32, s: f32) {
     pm.stroke(nib, &solid(rgba(90, 94, 104, 255)), u.lw(0.003));
 }
 
-/// Xadrez: torre de madeira dourada envernizada na casa da ponta de um
-/// tabuleiro 2×2 cinza e branco. Peça torneada (pé, bojo, coluna, anel e a
-/// coroa com as ameias) com as elipses na mesma inclinação do tabuleiro.
+/// Xadrez: peão de madeira dourada envernizada na casa da frente de um
+/// tabuleiro 2×2 cinza e branco. Peça torneada (pé, base, anel, corpo, colarinho
+/// e a cabeça redonda) com as elipses na mesma inclinação do tabuleiro.
 pub(crate) fn chess(pm: &mut Canvas, x: f32, y: f32, s: f32) {
     let u = U { x, y, s };
     // Tabuleiro: losango com 2×2 casas e a espessura. Achatamento: 0,42.
@@ -1024,39 +1024,27 @@ pub(crate) fn chess(pm: &mut Canvas, x: f32, y: f32, s: f32) {
     };
     // Sombra no tabuleiro
     pm.fill(u.ov(cx - 0.2, foot_y - 0.05, 0.46, 0.13), &radial(u.px(cx + 0.03), u.py(foot_y + 0.01), u.d(0.24), &[(0.0, rgba(0, 0, 0, 110)), (1.0, rgba(0, 0, 0, 0))]));
-    // Torre: pé, bojo, coluna que afina, anel, e a coroa com as ameias.
+    // Peão: pé, base abaulada, anel, corpo que afina, colarinho e a cabeça redonda.
     turned(pm, foot_y - 0.03, 0.19, foot_y, 0.19, 0.0);
-    turned(pm, foot_y - 0.1, 0.15, foot_y - 0.03, 0.175, 0.02);
-    turned(pm, foot_y - 0.12, 0.155, foot_y - 0.1, 0.155, 0.0);
-    let col_top = foot_y - 0.44;
-    turned(pm, col_top, 0.105, foot_y - 0.12, 0.135, 0.0);
-    turned(pm, col_top - 0.03, 0.14, col_top + 0.005, 0.12, 0.0);
-    let crown_top = col_top - 0.17;
-    let rc = 0.145;
-    turned(pm, crown_top, rc, col_top - 0.03, rc, 0.0);
-    // Boca da coroa: o vão escuro no meio e a borda clara em volta.
-    let inner = 0.095;
-    pm.fill(ell(crown_top + 0.004, inner), &vgrad(u.py(crown_top - inner * k), u.py(crown_top + inner * k), &[(0.0, rgba(40, 22, 8, 255)), (1.0, rgba(110, 72, 34, 255))]));
-    // Ameias: quatro vãos na borda (dois na frente, um de cada lado atrás).
-    let notch = |pm: &mut Canvas, a: f32| {
-        let (ca, sa) = (a.cos(), a.sin());
-        let (nx, ny) = (cx + ca * rc, crown_top + sa * rc * k);
-        let wd = 0.035 * sa.abs().max(0.35);
-        let depth = 0.05;
-        let front = sa > 0.0;
-        let gap = u.poly(&[(nx - wd, ny - 0.006), (nx + wd, ny - 0.006), (nx + wd, ny + if front { depth } else { 0.012 }), (nx - wd, ny + if front { depth } else { 0.012 })]);
-        let col = if front { rgba(70, 40, 14, 255) } else { rgba(50, 28, 10, 255) };
-        pm.fill(gap.clone(), &vgrad(u.py(ny), u.py(ny + depth), &[(0.0, col), (1.0, rgba(120, 80, 40, 255))]));
-        // A parede de dentro do vão (a outra borda da coroa) aparece por ele.
-        if front {
-            pm.fill(u.rr(nx - wd, ny + depth - 0.012, wd * 2.0, 0.012, 0.0), &solid(rgba(236, 200, 140, 255)));
-        }
-    };
-    for a in [-2.1f32, -1.05, 1.05, 2.1] {
-        notch(pm, a);
-    }
-    // Verniz: fio de luz descendo pela coluna.
-    pm.fill(u.rr(cx - 0.055, col_top + 0.02, 0.016, foot_y - 0.15 - col_top, 0.008), &solid(rgba(255, 245, 220, 110)));
+    turned(pm, foot_y - 0.1, 0.135, foot_y - 0.03, 0.18, 0.03);
+    turned(pm, foot_y - 0.125, 0.15, foot_y - 0.1, 0.15, 0.0);
+    let neck_y = foot_y - 0.37;
+    turned(pm, neck_y, 0.062, foot_y - 0.125, 0.125, -0.03);
+    turned(pm, neck_y - 0.028, 0.118, neck_y, 0.108, 0.0);
+    // Cabeça: a esfera, com a luz em cima à esquerda e o reflexo do verniz.
+    let hr = 0.125;
+    let hy = neck_y - 0.028 - hr * 0.86;
+    let head = u.ov(cx - hr, hy - hr, hr * 2.0, hr * 2.0);
+    pm.fill(head.clone(), &radial(u.px(cx - hr * 0.35), u.py(hy - hr * 0.4), u.d(hr * 1.9), &[
+        (0.0, rgba(252, 232, 184, 255)),
+        (0.35, rgba(214, 166, 94, 255)),
+        (0.75, rgba(132, 88, 38, 255)),
+        (1.0, rgba(72, 44, 16, 255)),
+    ]));
+    pm.stroke(head, &solid(edge), u.lw(0.004));
+    pm.fill(u.ov(cx - hr * 0.62, hy - hr * 0.78, hr * 0.62, hr * 0.42), &radial(u.px(cx - hr * 0.31), u.py(hy - hr * 0.57), u.d(hr * 0.36), &[(0.0, rgba(255, 252, 238, 220)), (1.0, rgba(255, 252, 238, 0))]));
+    // Verniz: fio de luz descendo pelo corpo.
+    pm.fill(u.rr(cx - 0.05, neck_y + 0.03, 0.014, foot_y - 0.17 - neck_y, 0.007), &solid(rgba(255, 245, 220, 110)));
 }
 
 /// Contatos: caderno de endereços de couro marrom, com a costura em volta da
