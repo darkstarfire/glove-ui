@@ -237,6 +237,38 @@ impl Icon {
         }
     }
 
+    /// O desenho próprio do tema do Mide (mide-icons) para os apps do Glove que têm um
+    /// equivalente lá: o tema traz os do Mide com estes nomes, além dos freedesktop.
+    fn mide_name(self) -> Option<&'static str> {
+        Some(match self {
+            Icon::Files => "mide-files",
+            Icon::Terminal => "mide-terminal",
+            Icon::TextEditor => "mide-text-editor",
+            Icon::Settings => "mide-settings",
+            Icon::Calculator => "mide-calculator",
+            Icon::Camera => "mide-screenshot",
+            Icon::Viewer => "mide-image-viewer",
+            Icon::Photos => "mide-photos",
+            Icon::Monitor => "mide-system-monitor",
+            Icon::DiskUtility => "mide-disks",
+            Icon::Backup => "mide-backup",
+            Icon::AppCenter => "mide-software-store",
+            Icon::Recorder => "mide-recorder",
+            Icon::Messages => "mide-chat",
+            Icon::Music => "mide-music",
+            Icon::Video => "mide-video-player",
+            Icon::Contacts => "mide-contacts",
+            Icon::Dictionary => "mide-dictionary",
+            Icon::FontBook => "mide-fonts",
+            Icon::Mail => "mide-mail",
+            Icon::Help => "mide-help",
+            Icon::Globe => "mide-web-browser",
+            Icon::Mouse => "mide-mouse",
+            Icon::Info => "mide-about",
+            _ => return None,
+        })
+    }
+
     /// Nome do ícone equivalente nos temas do sistema (freedesktop), para usar o
     /// tema escolhido nas Preferências também nos apps e pastas do Glove.
     fn freedesktop_name(self) -> Option<&'static str> {
@@ -435,6 +467,14 @@ pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: 
     // próprio Glove, o Lixo cheio fica desenhado (o tema guarda só um nível dele).
     let live = chosen == DEFAULT_THEME && matches!(icon, Icon::TrashFull(_));
     if !chosen.is_empty() && !live {
+        // No tema do Mide, o desenho próprio dele primeiro.
+        if chosen.starts_with("mide") {
+            if let Some(name) = icon.mide_name() {
+                if draw_themed(pm, &chosen, name, x, y, s) {
+                    return;
+                }
+            }
+        }
         if let Some(name) = icon.freedesktop_name() {
             if draw_themed(pm, &chosen, name, x, y, s) {
                 return;
