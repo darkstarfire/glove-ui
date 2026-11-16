@@ -23,8 +23,15 @@ pub fn split_terse(line: &str) -> Vec<String> {
     out
 }
 
+/// Consulta ao NetworkManager. Com limite de tempo: a barra de menu consulta da linha
+/// principal do compositor, que não pode ficar presa num `nmcli` que não responde (a
+/// busca de redes, a mais demorada, leva alguns segundos).
 fn nmcli(args: &[&str]) -> Option<String> {
-    let out = Command::new("nmcli").args(args).output().ok()?;
+    nmcli_within(args, 5)
+}
+
+fn nmcli_within(args: &[&str], secs: u64) -> Option<String> {
+    let out = crate::comando::output_within(Command::new("nmcli").args(args), std::time::Duration::from_secs(secs))?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
@@ -101,7 +108,7 @@ pub fn parse_wifi(text: &str) -> Vec<Wifi> {
 
 /// Redes Wi-Fi visíveis. `rescan` pede uma busca nova (mais lento).
 pub fn wifi_list(rescan: bool) -> Vec<Wifi> {
-    nmcli(&["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", if rescan { "yes" } else { "no" }]).map(|t| parse_wifi(&t)).unwrap_or_default()
+    nmcli_within(&["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", if rescan { "yes" } else { "no" }], if rescan { 30 } else { 5 }).map(|t| parse_wifi(&t)).unwrap_or_default()
 }
 
 pub fn wifi_enabled() -> Option<bool> {
