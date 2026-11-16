@@ -1021,7 +1021,8 @@ impl Config {
                     c.shortcuts = default_shortcuts();
                 }
                 let added = c.add_missing_shortcuts();
-                if c.migrate() || added {
+                let gel = c.drop_removed_gel();
+                if c.migrate() || added || gel {
                     let _ = c.save();
                 }
                 set_reduce_effects(c.appearance.reduce_effects);
@@ -1068,6 +1069,24 @@ impl Config {
 
     /// Atualiza configurações antigas: troca apps do GNOME pelos do Glove e
     /// acrescenta os apps novos do Dock. Devolve verdadeiro se mudou algo.
+    /// Os papéis em gel (pacote glove-papeis) saíram do Glove OS: quem estava com um
+    /// deles volta para o papel original, em vez de cair no desenhado.
+    fn drop_removed_gel(&mut self) -> bool {
+        let gone = |w: &str| w.contains("/glove/papeis/gel/") && !std::path::Path::new(w).exists();
+        let mut changed = false;
+        if gone(&self.wallpaper) {
+            self.wallpaper = default_wallpaper();
+            changed = true;
+        }
+        for w in self.wallpapers.values_mut() {
+            if gone(w) {
+                *w = default_wallpaper();
+                changed = true;
+            }
+        }
+        changed
+    }
+
     pub fn migrate(&mut self) -> bool {
         if self.dock_rev >= DOCK_REV {
             return false;
