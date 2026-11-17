@@ -269,6 +269,39 @@ impl Icon {
         })
     }
 
+    /// O ícone de cada painel das Preferências nos temas do sistema (os nomes
+    /// freedesktop de "preferências"), para os painéis acompanharem o tema escolhido
+    /// como os apps. Só vale para um tema de fora: no do próprio Glove fica o desenho dele.
+    fn pref_name(self) -> Option<&'static str> {
+        let Icon::Pref(k) = self else { return None };
+        Some(match k {
+            PrefKind::ShowAll => "view-app-grid",
+            PrefKind::Appearance => "preferences-desktop-theme",
+            PrefKind::Dock => "dock",
+            PrefKind::Keyboard => "preferences-desktop-keyboard",
+            PrefKind::Shortcuts => "preferences-desktop-keyboard-shortcuts",
+            PrefKind::Desktop => "preferences-desktop-wallpaper",
+            PrefKind::Sound => "preferences-desktop-sound",
+            PrefKind::Energy => "preferences-system-power",
+            PrefKind::Network => "preferences-system-network",
+            PrefKind::DateTime => "preferences-system-time",
+            PrefKind::LoginItems => "preferences-system-startup",
+            PrefKind::Access => "preferences-desktop-accessibility",
+            PrefKind::Accounts => "preferences-system-users",
+            PrefKind::International => "preferences-desktop-locale",
+            PrefKind::Removable => "drive-removable-media",
+            PrefKind::Wireless => "preferences-system-bluetooth",
+            PrefKind::Sharing => "preferences-system-sharing",
+            PrefKind::DefaultApps => "preferences-desktop-default-applications",
+            PrefKind::Printer => "preferences-devices-printer",
+            PrefKind::Update => "system-software-update",
+            PrefKind::StartupDisk => "drive-harddisk",
+            PrefKind::Speech => "preferences-desktop-text-to-speech",
+            PrefKind::Security => "preferences-system-privacy",
+            PrefKind::Expose => "preferences-system-windows",
+        })
+    }
+
     /// Nome do ícone equivalente nos temas do sistema (freedesktop), para usar o
     /// tema escolhido nas Preferências também nos apps e pastas do Glove.
     fn freedesktop_name(self) -> Option<&'static str> {
@@ -403,6 +436,11 @@ pub fn set_theme(name: &str) {
     }
 }
 
+/// O tema de ícones em uso agora (para quem guarda desenhos feitos com ele).
+pub fn theme_name() -> String {
+    THEME.lock().map(|t| t.clone()).unwrap_or_default()
+}
+
 /// Tema do sistema para os apps de fora quando o Glove usa os próprios ícones:
 /// o do GTK (o que o resto do sistema mostra), senão o Adwaita.
 fn system_theme() -> String {
@@ -524,6 +562,14 @@ pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: 
         if let Some(name) = icon.freedesktop_name() {
             if draw_themed(pm, &chosen, name, x, y, s) {
                 return;
+            }
+        }
+        // Os painéis das Preferências, num tema de fora.
+        if chosen != DEFAULT_THEME {
+            if let Some(name) = icon.pref_name() {
+                if draw_themed(pm, &chosen, name, x, y, s) {
+                    return;
+                }
             }
         }
     }

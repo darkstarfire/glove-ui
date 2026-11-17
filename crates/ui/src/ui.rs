@@ -708,6 +708,21 @@ impl<'a> Ui<'a> {
         self.mem.min_req = Some((w.round().max(1.0) as u32, h.round().max(1.0) as u32, animate));
     }
 
+    /// A moldura de uma folha (o painel que desce da barra, por cima do conteúdo): uma
+    /// sombra suave que some aos poucos em volta, o corpo e a borda, com os cantos de
+    /// baixo arredondados. `r` é a área da folha.
+    pub fn sheet_panel(&mut self, r: Rect) {
+        // Camadas cada vez mais largas e fracas (uma moldura cinza de uma cor só parecia
+        // um defeito, não uma sombra).
+        for i in (1..=7).rev() {
+            let g = i as f32 * 2.0;
+            self.c.fill(rrect4(r.x - g, r.y, r.w + 2.0 * g, r.h + g, [0.0, 0.0, 6.0 + g, 6.0 + g]), &solid(rgba(0, 0, 0, 9)));
+        }
+        let shape = || rrect4(r.x, r.y, r.w, r.h, [0.0, 0.0, 6.0, 6.0]);
+        self.c.fill(shape(), &vgrad(r.y, r.y + r.h, &[(0.0, rgba(236, 236, 238, 255)), (1.0, rgba(246, 246, 248, 255))]));
+        self.c.stroke(rrect4(r.x + 0.5, r.y - 0.5, r.w - 1.0, r.h, [0.0, 0.0, 6.0, 6.0]), &solid(rgba(0, 0, 0, 70)), 1.0);
+    }
+
     pub fn minimize(&mut self) {
         self.mem.minimize_req = true;
     }
@@ -1385,23 +1400,41 @@ impl<'a> Ui<'a> {
             self.redraw = true;
         }
 
-        // Corpo branco + ponta azul com setas
-        gel_rect(self.c, r.x, r.y, r.w, r.h, 5.0, rgba(244, 244, 246, 255));
         let cap = 20.0;
-        self.c.fill(rrect4(r.x + r.w - cap, r.y + 1.0, cap - 1.0, r.h - 2.0, [0.0, 4.0, 4.0, 0.0]), &vgrad(r.y, r.y + r.h, &[(0.0, darken(self.theme.accent, 0.05)), (0.5, self.theme.accent), (1.0, lighten(self.theme.accent, 0.5))]));
-        self.c.fill(rrect4(r.x + r.w - cap + 1.0, r.y + 2.0, cap - 3.0, r.h * 0.45, [0.0, 3.0, 1.0, 0.0]), &solid(rgba(255, 255, 255, 110)));
         let ax = r.x + r.w - cap / 2.0;
-        let arrow = |c: &mut Canvas, y: f32, up: bool| {
-            let mut pb = glove_paint::tiny_skia::PathBuilder::new();
-            let d = if up { -1.0 } else { 1.0 };
-            pb.move_to(ax - 3.5, y);
-            pb.line_to(ax + 3.5, y);
-            pb.line_to(ax, y + 3.5 * d);
-            pb.close();
-            c.fill(pb.finish(), &solid(rgba(20, 30, 60, 230)));
-        };
-        arrow(self.c, r.y + 9.5, true);
-        arrow(self.c, r.y + 12.5, false);
+        if self.theme.modern {
+            // Moderno: o corpo liso e, no lugar da ponta de gel, um quadradinho liso na
+            // cor de destaque com as duas setas em traço branco.
+            gel_rect(self.c, r.x, r.y, r.w, r.h, 5.0, rgba(244, 244, 246, 255));
+            let (bx, by, bs) = (r.x + r.w - cap + 1.0, r.y + 3.0, r.h - 6.0);
+            self.c.fill(rrect(bx, by, bs, bs, 4.0), &solid(if self.dimmed { rgba(170, 170, 176, 255) } else { self.theme.accent }));
+            let cx = bx + bs / 2.0;
+            let chevron = |c: &mut Canvas, y: f32, d: f32| {
+                let mut pb = glove_paint::tiny_skia::PathBuilder::new();
+                pb.move_to(cx - 3.0, y);
+                pb.line_to(cx, y + 3.0 * d);
+                pb.line_to(cx + 3.0, y);
+                c.stroke(pb.finish(), &solid(Color::WHITE), 1.4);
+            };
+            chevron(self.c, r.y + r.h / 2.0 - 1.5, -1.0);
+            chevron(self.c, r.y + r.h / 2.0 + 1.5, 1.0);
+        } else {
+            // Corpo branco + ponta azul com setas
+            gel_rect(self.c, r.x, r.y, r.w, r.h, 5.0, rgba(244, 244, 246, 255));
+            self.c.fill(rrect4(r.x + r.w - cap, r.y + 1.0, cap - 1.0, r.h - 2.0, [0.0, 4.0, 4.0, 0.0]), &vgrad(r.y, r.y + r.h, &[(0.0, darken(self.theme.accent, 0.05)), (0.5, self.theme.accent), (1.0, lighten(self.theme.accent, 0.5))]));
+            self.c.fill(rrect4(r.x + r.w - cap + 1.0, r.y + 2.0, cap - 3.0, r.h * 0.45, [0.0, 3.0, 1.0, 0.0]), &solid(rgba(255, 255, 255, 110)));
+            let arrow = |c: &mut Canvas, y: f32, up: bool| {
+                let mut pb = glove_paint::tiny_skia::PathBuilder::new();
+                let d = if up { -1.0 } else { 1.0 };
+                pb.move_to(ax - 3.5, y);
+                pb.line_to(ax + 3.5, y);
+                pb.line_to(ax, y + 3.5 * d);
+                pb.close();
+                c.fill(pb.finish(), &solid(rgba(20, 30, 60, 230)));
+            };
+            arrow(self.c, r.y + 9.5, true);
+            arrow(self.c, r.y + 12.5, false);
+        }
         let label = options.get(*value).map(|s| s.as_str()).unwrap_or("");
         let t = self.fonts.ellipsize(label, TEXT, false, r.w - cap - 16.0);
         self.fonts.draw(self.c, &t, r.x + 10.0, r.y + 15.5, TEXT, false, ink());

@@ -800,7 +800,9 @@ pub fn shadow_bytes() -> (usize, usize) {
 fn icon_shadow(fonts: &Fonts, icon: icons::Icon, letter: Option<char>, size: f32, scale: f32) -> Option<(std::rc::Rc<Canvas>, f32)> {
     // Tamanhos de 2 em 2 pixels: a ampliação não refaz a sombra a cada quadro.
     let px = ((size * scale / 2.0).round() * 2.0) as u32;
-    let key = (format!("{icon:?}{letter:?}"), px);
+    // O tema entra na chave: a sombra tem a forma do desenho, e trocando de tema o
+    // desenho é outro (com a chave sem o tema, ficava a sombra do ícone antigo).
+    let key = (format!("{}:{icon:?}{letter:?}", icons::theme_name()), px);
     if let Some(c) = ICON_SHADOWS.with(|m| m.borrow().iter().find(|(k, _)| *k == key).map(|(_, c)| c.clone())) {
         return Some((c, (size * 0.08).max(3.0)));
     }
@@ -2426,6 +2428,55 @@ pub fn app_switcher(fonts: &Fonts, apps: &[(Icon, String)], selected: usize, max
     Some(c)
 }
 
+const WS_CELL: (f32, f32) = (220.0, 150.0);
+const WS_GAP: f32 = 10.0;
+
+/// A faixa das janelas de um app (a troca entre as janelas do mesmo app): o tamanho
+/// dela e, em cada casa, a área onde a miniatura da janela cabe (relativa à faixa).
+/// As casas encolhem se não couberem em `max_w`. Os tamanhos das janelas dão a
+/// proporção de cada miniatura.
+pub fn window_switcher_layout(sizes: &[(f32, f32)], max_w: f32) -> ((f32, f32), Vec<[f32; 4]>) {
+    let n = sizes.len().max(1) as f32;
+    let k = ((max_w - 2.0 * SW_PAD - (n - 1.0) * WS_GAP) / (n * WS_CELL.0)).min(1.0).max(0.1);
+    let (cw, ch) = (WS_CELL.0 * k, WS_CELL.1 * k);
+    let w = n * cw + (n - 1.0) * WS_GAP + 2.0 * SW_PAD;
+    let h = ch + SW_PAD * 1.6 + SW_LABEL_H;
+    let slots = sizes
+        .iter()
+        .enumerate()
+        .map(|(i, &(ww, wh))| {
+            let (cx, cy) = (SW_PAD + i as f32 * (cw + WS_GAP), SW_PAD * 0.8);
+            // A miniatura inteira dentro da casa, com uma folga, na proporção da janela.
+            let (aw, ah) = (cw - 16.0, ch - 16.0);
+            let s = (aw / ww.max(1.0)).min(ah / wh.max(1.0));
+            let (tw, th) = (ww * s, wh * s);
+            [cx + (cw - tw) / 2.0, cy + (ch - th) / 2.0, tw, th]
+        })
+        .collect();
+    ((w, h), slots)
+}
+
+/// O fundo da faixa das janelas: escuro e translúcido como o da troca de apps, a casa
+/// escolhida num retângulo claro e o título dela embaixo. As miniaturas são desenhadas
+/// pelo compositor por cima, nas áreas de `window_switcher_layout`.
+pub fn window_switcher(fonts: &Fonts, sizes: &[(f32, f32)], selected: usize, title: &str, max_w: f32, scale: f32) -> Option<Canvas> {
+    let ((w, h), slots) = window_switcher_layout(sizes, max_w);
+    let mut c = Canvas::new(w, h, scale)?;
+    c.fill(rrect(0.0, 0.0, w, h, 20.0), &solid(rgba(24, 26, 30, 165)));
+    let n = sizes.len().max(1) as f32;
+    let cw = (w - 2.0 * SW_PAD - (n - 1.0) * WS_GAP) / n;
+    let ch = h - SW_PAD * 1.6 - SW_LABEL_H;
+    if selected < slots.len() {
+        let x = SW_PAD + selected as f32 * (cw + WS_GAP);
+        c.fill(rrect(x, SW_PAD * 0.8, cw, ch, 10.0), &solid(rgba(255, 255, 255, 70)));
+    }
+    let px = 15.0;
+    let t = fonts.ellipsize(title, px, true, w - 2.0 * SW_PAD);
+    let tw = fonts.measure(&t, px, true);
+    fonts.draw(&mut c, &t, ((w - tw) / 2.0).max(8.0), h - SW_LABEL_H / 2.0 + 2.0, px, true, Color::WHITE);
+    Some(c)
+}
+
 /// Menu com bico embaixo apontando para `pointer_x` (relativo ao conteúdo), para
 /// os menus do Dock. O bico ocupa a margem de sombra de baixo.
 pub fn menu_with_pointer(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usize>, pointer_x: f32, scale: f32) -> Option<Canvas> {
@@ -2545,6 +2596,26 @@ pub fn avatar(c: &mut Canvas, x: f32, y: f32, s: f32, seed: u64) {
 
 #[cfg(test)]
 mod control_tests {
+    /// A faixa das janelas do app: as casas encolhem para caber e cada miniatura fica
+    /// inteira dentro da casa dela, na proporção da janela.
+    #[test]
+    fn faixa_das_janelas() {
+        let sizes = [(800.0, 600.0), (300.0, 900.0), (1600.0, 400.0)];
+        let ((w, h), slots) = super::window_switcher_layout(&sizes, 2000.0);
+        assert_eq!(slots.len(), 3);
+        assert!(w <= 2000.0 && h > 150.0);
+        for (s, (ww, wh)) in slots.iter().zip(sizes) {
+            assert!(s[0] >= 0.0 && s[0] + s[2] <= w && s[1] + s[3] <= h, "{s:?}");
+            assert!((s[2] / s[3] - ww / wh).abs() < 0.01, "proporção {s:?}");
+            assert!(s[2] <= 204.5 && s[3] <= 134.5, "{s:?}");
+        }
+        // Muitas janelas numa tela estreita: a faixa cabe.
+        let many = vec![(800.0, 600.0); 12];
+        let ((w, _), slots) = super::window_switcher_layout(&many, 1200.0);
+        assert!(w <= 1200.5, "{w}");
+        assert!(slots.windows(2).all(|p| p[0][0] + p[0][2] <= p[1][0] + 0.5));
+    }
+
     use super::*;
 
     /// A central com tudo (botões e os três trilhos) cabe na altura medida.

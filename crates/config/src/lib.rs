@@ -12,6 +12,7 @@ pub mod comando;
 pub mod discos;
 pub mod inicio;
 pub mod rede;
+pub mod senha;
 pub mod sons;
 
 /// Segurança (Preferências ▸ Segurança).
@@ -730,6 +731,9 @@ pub struct Config {
     pub wallpapers: std::collections::BTreeMap<String, String>,
     /// Papel animado (vídeo ou GIF).
     pub wallpaper_anim: WallpaperAnim,
+    /// As imagens favoritas para papel de parede (caminhos, ou os nomes das do Glove),
+    /// na ordem em que foram juntadas: a coleção "Favoritas" do painel Mesa.
+    pub wallpaper_favorites: Vec<String>,
     pub terminal: String,
     /// Família da fonte do Terminal (ex.: "JetBrainsMono Nerd Font"); vazio = padrão.
     pub terminal_font: String,
@@ -960,6 +964,7 @@ impl Default for Config {
             wallpaper_fit: "preencher".into(),
             wallpapers: Default::default(),
             wallpaper_anim: WallpaperAnim::default(),
+            wallpaper_favorites: Vec::new(),
             terminal: default_terminal(),
             terminal_font: String::new(),
             terminal_font_size: 12.0,
@@ -1405,6 +1410,10 @@ pub fn app_icon_name(dock: &[DockApp], app_id: &str) -> String {
     // Utilitários que não aparecem na Busca, mas têm janela (e ícone próprio).
     if app_id == "glove.Arquivo" {
         return "archiver".into();
+    }
+    // A janela de senha do sistema (glove-senha): o chaveiro.
+    if app_id == "glove.Senha" {
+        return "keychain".into();
     }
     match known_app(dock, app_id) {
         Some(a) if a.icon != "window" && a.icon != "generic" && !a.icon.is_empty() => a.icon,
