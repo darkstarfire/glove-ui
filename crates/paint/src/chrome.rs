@@ -1572,6 +1572,8 @@ pub enum Extra {
     User { name: String },
     /// Central de avisos: quantos não lidos e "não perturbe".
     Notifications { unread: u32, quiet: bool },
+    /// Gravação de tela em andamento: o tempo e a bolinha (acesa ou apagada, piscando).
+    Recording { tempo: String, aceso: bool },
     /// Central de controle (Wi-Fi, Bluetooth, brilho, luz do teclado, som).
     Control,
 }
@@ -1590,6 +1592,7 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
         Extra::User { name } => fonts.measure(name, MENUBAR_PX, true) + 16.0,
         Extra::Notifications { unread: 0, .. } => 28.0,
         Extra::Notifications { unread, .. } => 30.0 + fonts.measure(&(*unread).min(99).to_string(), 9.0, true),
+        Extra::Recording { tempo, .. } => 22.0 + fonts.measure(tempo, MENUBAR_PX, false),
         Extra::Control => 30.0,
     }
 }
@@ -1957,6 +1960,16 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
             Extra::Control => control_glyph(c, a + 7.0, 3.0, col, if is_open { theme.accent } else { rgba(250, 250, 250, 255) }),
+            Extra::Recording { tempo, aceso } => {
+                // Bolinha vermelha (piscando) e o tempo decorrido ao lado.
+                let (c1, c2) = if *aceso {
+                    (rgba(255, 110, 100, 255), rgba(200, 30, 25, 255))
+                } else {
+                    (rgba(255, 110, 100, 90), rgba(200, 30, 25, 90))
+                };
+                c.fill(rrect(a + 7.0, 6.0, 9.0, 9.0, 4.5), &vgrad(6.0, 15.0, &[(0.0, c1), (1.0, c2)]));
+                fonts.draw(c, tempo, a + 20.0, 16.0, MENUBAR_PX, false, col);
+            }
             Extra::Notifications { unread, quiet } => {
                 notif_glyph(c, a + 7.0, 4.0, *quiet, col);
                 if *unread > 0 {
