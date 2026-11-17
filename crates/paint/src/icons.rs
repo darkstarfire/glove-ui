@@ -428,10 +428,13 @@ fn system_theme() -> String {
 }
 
 /// Desenha a imagem de um tema do sistema; falso se o tema não tem o ícone.
+/// Nos temas do Mide, o desenho colorido mesmo pequeno (as listas do Arquivos): os
+/// de contorno ficam para a barra lateral (`draw_sidebar`).
 fn draw_themed(pm: &mut Canvas, theme: &str, name: &str, x: f32, y: f32, s: f32) -> bool {
     let k = pm.scale;
     let px = (s * k).round() as u32;
-    let Some(img) = crate::sysicons::image(theme, name, px) else { return false };
+    let img = if theme.starts_with("mide") { crate::sysicons::image_full(theme, name, px) } else { crate::sysicons::image(theme, name, px) };
+    let Some(img) = img else { return false };
     let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
     pm.draw_pixmap_t(img.as_ref().as_ref(), &paint, tiny_skia::Transform::from_translate((x * k).round(), (y * k).round()));
     true
@@ -458,6 +461,40 @@ fn draw_icon(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32,
         &radial(x + s * 0.5, y + s * 0.92, s * 0.4, &[(0.0, rgba(0, 0, 0, 90)), (1.0, rgba(0, 0, 0, 0))]),
     );
     draw_bare(pm, fonts, icon, x, y, s, letter);
+}
+
+/// Ícone de barra lateral (Arquivos, Abrir/Salvar). Na aparência Moderno, o de
+/// contorno (simbólico) do tema pintado de `tint`, como nas barras laterais de hoje;
+/// no clássico (ou se nenhum tema tiver o simbólico), o ícone desenhado normal.
+pub fn draw_sidebar(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, tint: Color) {
+    if crate::theme::modern() {
+        let name = match icon {
+            Icon::Pref(PrefKind::Network) | Icon::NetUtility => Some("network-workgroup"),
+            Icon::AppsPlace | Icon::SpecialFolder(FolderKind::Applications) => Some("view-app-grid"),
+            Icon::Removable => Some("drive-removable-media"),
+            _ => icon.freedesktop_name(),
+        };
+        if let Some(name) = name {
+            let chosen = THEME.lock().map(|t| t.clone()).unwrap_or_default();
+            let sym = format!("{name}-symbolic");
+            // Um pouco menor que o colorido: o contorno ocupa o quadrado todo.
+            let side = (s * 0.75).round();
+            let px = (side * pm.scale).round() as u32;
+            for theme in [chosen.as_str(), "Adwaita"] {
+                if theme.is_empty() || theme == DEFAULT_THEME {
+                    continue;
+                }
+                if let Some(img) = crate::sysicons::image_tinted(theme, &sym, px, tint) {
+                    let k = pm.scale;
+                    let off = (s - side) / 2.0;
+                    let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
+                    pm.draw_pixmap_t(img.as_ref().as_ref(), &paint, tiny_skia::Transform::from_translate(((x + off) * k).round(), ((y + off) * k).round()));
+                    return;
+                }
+            }
+        }
+    }
+    draw_bare(pm, fonts, icon, x, y, s, None);
 }
 
 /// O ícone sem a sombra de contato (no Dock os ícones ficam direto no vidro).

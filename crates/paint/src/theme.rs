@@ -104,6 +104,47 @@ pub struct Theme {
     pub separator: Color,
 }
 
+/// Visual escolhido por um app feito com o glove-ui: seguir as Preferências (o
+/// padrão) ou ficar sempre no clássico (a era do gel) ou sempre no moderno. A
+/// estrutura do app é a mesma nos dois; só o desenho dos controles muda.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Visual {
+    /// O que o usuário escolheu em Preferências ▸ Aparência.
+    #[default]
+    System,
+    /// Sempre clássico: o Claro, ou a variante clássica escolhida.
+    Classic,
+    /// Sempre moderno: o Moderno Claro, ou o Escuro se for o escolhido.
+    Modern,
+}
+
+static VISUAL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Fixa o visual do app (chamar antes de abrir a janela).
+pub fn set_visual(v: Visual) {
+    VISUAL.store(v as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn visual() -> Visual {
+    match VISUAL.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Visual::Classic,
+        2 => Visual::Modern,
+        _ => Visual::System,
+    }
+}
+
+impl Visual {
+    /// A variante das Preferências ajustada ao visual pedido pelo app.
+    pub fn apply(self, chosen: Variant) -> Variant {
+        match self {
+            Visual::System => chosen,
+            Visual::Classic if chosen.modern() => Variant::Claro,
+            Visual::Modern if !chosen.modern() => Variant::Moderno,
+            _ => chosen,
+        }
+    }
+}
+
 /// O estilo do processo (o tema principal que ele mostra): os desenhos que não recebem
 /// o tema (sombras, controles avulsos, a troca de cores do modo escuro) consultam aqui.
 static STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
@@ -223,5 +264,19 @@ impl Theme {
             self.wallpaper = [rgba(30, 60, 140, 255), rgba(90, 120, 210, 255), rgba(200, 180, 230, 255)];
         }
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visual_do_app_ajusta_a_variante() {
+        assert_eq!(Visual::System.apply(Variant::Metal), Variant::Metal);
+        assert_eq!(Visual::Classic.apply(Variant::ModernoEscuro), Variant::Claro);
+        assert_eq!(Visual::Classic.apply(Variant::Grafite), Variant::Grafite);
+        assert_eq!(Visual::Modern.apply(Variant::Listras), Variant::Moderno);
+        assert_eq!(Visual::Modern.apply(Variant::ModernoEscuro), Variant::ModernoEscuro);
     }
 }

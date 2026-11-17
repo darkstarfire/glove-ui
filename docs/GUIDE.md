@@ -95,6 +95,21 @@ To close the window from code: `ui.close = true`.
 | `alert(kind, title, text, &[buttons]) -> Option<usize>` | Sheet alert; the last button is the default and "Cancel" answers Esc |
 | `tab_strip(r, &titles, active) -> Option<TabAction>` | Tab strip with × and +; returns `Select`, `Close` or `New` (height `TAB_STRIP_H`) |
 
+## Classic or modern look
+
+The same app has two looks: the classic one (gel, pinstripes, metal) and the modern one
+(flat, rounded, light or dark). By default it follows what the user chose in Preferences ›
+Appearance. To fix one, call `set_visual` before `run`:
+
+```rust
+glove_ui::set_visual(glove_ui::Visual::Modern); // or Visual::Classic, Visual::System
+```
+
+Nothing else changes in the code: the widgets (buttons, tables, scroll bars, text fields,
+menus, sidebars) draw themselves in the chosen look. In custom drawing, ask
+`ui.theme.modern` / `ui.theme.dark` (or `glove_paint::theme::modern()`), and use
+`icons::draw_sidebar` for sidebar icons (outline icons in the modern look).
+
 ## Several windows and descriptors
 
 - `ui.open_window(id, options)` opens another window of the same app; `ui.window_id()` says which

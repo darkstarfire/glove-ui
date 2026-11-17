@@ -899,6 +899,19 @@ impl Canvas {
     }
 
     pub fn stroke(&mut self, path: Option<Path>, paint: &Paint, width: f32) {
+        // Contornos finos em cinza (bordas de listas e campos) seguem as linhas no escuro.
+        let mapped = match paint.shader {
+            tiny_skia::Shader::SolidColor(c) if self.dark_remap && width <= 1.5 => {
+                let d = self.remap_line(c);
+                (d != c).then(|| {
+                    let mut q = paint.clone();
+                    q.shader = tiny_skia::Shader::SolidColor(d);
+                    q
+                })
+            }
+            _ => None,
+        };
+        let paint = mapped.as_ref().unwrap_or(paint);
         if let Some(p) = path {
             if self.note_path(3, &p, paint, width, width + 1.0) || !self.path_visible(&p, width + 1.0) {
                 return;
@@ -975,13 +988,29 @@ impl Canvas {
     }
 
     /// Linha de 1 pixel físico (para bordas sempre finas e nítidas).
+    /// Linha fina no modo escuro: separador claro vira um cinza um pouco acima do
+    /// fundo; borda cinza-média vira quase preta (como no tema escuro de hoje).
+    fn remap_line(&self, c: Color) -> Color {
+        if !self.dark_remap {
+            return c;
+        }
+        let (l, sat) = lum_sat(c);
+        if sat > 0.12 || l < 0.5 {
+            return c;
+        }
+        let v = if l >= 0.8 { 66 } else { 20 };
+        rgba(v, v, v + 2, (c.alpha() * 255.0) as u8)
+    }
+
     pub fn hline(&mut self, x: f32, y: f32, w: f32, c: Color) {
+        let c = self.remap_line(c);
         let s = self.scale;
         let (px, py, pw) = ((x * s).round() as i32, (y * s).floor() as i32, (w * s).round() as i32);
         self.px_rect(px, py, pw, 1, c);
     }
 
     pub fn vline(&mut self, x: f32, y: f32, h: f32, c: Color) {
+        let c = self.remap_line(c);
         let s = self.scale;
         let (px, py, ph) = ((x * s).floor() as i32, (y * s).round() as i32, (h * s).round() as i32);
         self.px_rect(px, py, 1, ph, c);
@@ -1016,7 +1045,15 @@ impl Canvas {
     }
 
     /// Listras finas horizontais; `a` e `b` alternam a cada 2 linhas lógicas.
+    /// Na aparência Moderno não há listras: o fundo fica liso, na cor média das duas.
     pub fn pinstripes(&mut self, x: f32, y: f32, w: f32, h: f32, a: Color, b: Color) {
+        if crate::theme::modern() {
+            self.fill_rect(x, y, w, h, &solid(a));
+            let mut half = b;
+            half.apply_opacity(0.5);
+            self.fill_rect(x, y, w, h, &solid(half));
+            return;
+        }
         if self.rec.is_some() {
             let mut k = Fp::new(7);
             for v in [x, y, w, h] {

@@ -2490,47 +2490,67 @@ impl<'a> Ui<'a> {
         let normal = [(0.0, rgba(255, 255, 255, 255)), (0.4, rgba(245, 245, 245, 255)), (0.5, rgba(236, 236, 236, 255)), (0.56, rgba(243, 243, 243, 255)), (1.0, rgba(255, 255, 255, 255))];
         let lit = [(0.0, lighten(a, 0.82)), (0.4, lighten(a, 0.58)), (0.5, lighten(a, 0.42)), (0.56, lighten(a, 0.5)), (1.0, lighten(a, 0.8))];
         let (hy, hb) = (area.y, area.y + hh);
-        self.c.fill_rect(area.x, hy, area.w, hh, &vgrad(hy, hb, &normal));
+        // Moderno: cabeçalho liso, sem a coluna azul; a ordenada fica em negrito.
+        let modern = self.theme.modern;
+        if modern {
+            self.c.fill_rect(area.x, hy, area.w, hh, &solid(Color::WHITE));
+        } else {
+            self.c.fill_rect(area.x, hy, area.w, hh, &vgrad(hy, hb, &normal));
+        }
         let sorted_col = state.sort.map(|(c, _)| c);
+        let sep = if modern { rgba(222, 222, 226, 255) } else { rgba(196, 196, 200, 255) };
         for (j, col) in cols.iter().enumerate() {
             let (x0, x1) = (area.x + xs[j], area.x + col_end(j));
             let on = sorted_col == Some(j);
-            if on {
+            if on && !modern {
                 self.c.fill_rect(x0, hy, x1 - x0, hh, &vgrad(hy, hb, &lit));
             }
             if j > 0 {
-                self.c.vline(x0, hy + 1.0, hh - 2.0, rgba(196, 196, 200, 255));
+                self.c.vline(x0, hy + 3.0, hh - 6.0, sep);
             }
-            let ink = rgba(25, 25, 28, 255);
-            let tw = self.fonts.measure(col.title, 11.0, false);
+            let ink = if modern && !on { rgba(90, 90, 96, 255) } else { rgba(25, 25, 28, 255) };
+            let bold = modern && on;
+            let tw = self.fonts.measure(col.title, 11.0, bold);
             let arrow_w = if on { 13.0 } else { 0.0 };
             let avail = x1 - x0 - 12.0 - arrow_w;
-            let t = self.fonts.ellipsize(col.title, 11.0, false, avail);
+            let t = self.fonts.ellipsize(col.title, 11.0, bold, avail);
             let tw = tw.min(avail);
             let base = hy + 12.5;
             // Seta de ordenação do lado oposto ao texto.
             let (tx, ax) = if col.right { (x1 - 6.0 - tw, x0 + 9.0) } else { (x0 + 6.0, x1 - 9.0) };
-            self.fonts.draw(self.c, &t, tx, base, 11.0, false, ink);
+            self.fonts.draw(self.c, &t, tx, base, 11.0, bold, ink);
             if on {
                 let asc = state.sort.is_some_and(|(_, asc)| asc);
                 let cy = hy + hh / 2.0;
                 let d = if asc { -1.0 } else { 1.0 };
                 let mut pb = glove_paint::tiny_skia::PathBuilder::new();
-                pb.move_to(ax - 3.5, cy - 2.0 * d);
-                pb.line_to(ax + 3.5, cy - 2.0 * d);
-                pb.line_to(ax, cy + 2.5 * d);
-                pb.close();
-                self.c.fill(pb.finish(), &solid(darken(a, 0.35)));
+                if modern {
+                    // Divisa fina (chevron) em cinza.
+                    pb.move_to(ax - 3.5, cy - 1.5 * d);
+                    pb.line_to(ax, cy + 1.5 * d);
+                    pb.line_to(ax + 3.5, cy - 1.5 * d);
+                    self.c.stroke_round(pb.finish(), &solid(rgba(110, 110, 116, 255)), 1.3);
+                } else {
+                    pb.move_to(ax - 3.5, cy - 2.0 * d);
+                    pb.line_to(ax + 3.5, cy - 2.0 * d);
+                    pb.line_to(ax, cy + 2.5 * d);
+                    pb.close();
+                    self.c.fill(pb.finish(), &solid(darken(a, 0.35)));
+                }
             }
         }
-        if let Some(j) = sorted_col.filter(|&j| j < cols.len()) {
-            self.c.hline(area.x + xs[j], hy, col_end(j) - xs[j], darken(a, 0.2));
+        if modern {
+            self.c.hline(area.x, hb - 1.0, area.w, sep);
+        } else {
+            if let Some(j) = sorted_col.filter(|&j| j < cols.len()) {
+                self.c.hline(area.x + xs[j], hy, col_end(j) - xs[j], darken(a, 0.2));
+            }
+            self.c.hline(area.x, hb - 1.0, area.w, rgba(160, 160, 166, 255));
+            if let Some(j) = sorted_col.filter(|&j| j < cols.len()) {
+                self.c.hline(area.x + xs[j], hb - 1.0, col_end(j) - xs[j], darken(a, 0.05));
+            }
         }
-        self.c.hline(area.x, hb - 1.0, area.w, rgba(160, 160, 166, 255));
-        if let Some(j) = sorted_col.filter(|&j| j < cols.len()) {
-            self.c.hline(area.x + xs[j], hb - 1.0, col_end(j) - xs[j], darken(a, 0.05));
-        }
-        self.c.vline(body.x + body.w, hy + 1.0, hh - 2.0, rgba(196, 196, 200, 255));
+        self.c.vline(body.x + body.w, hy + 1.0, hh - 2.0, sep);
 
         // Corpo, desenhado numa superfície recortada.
         let active = self.input.active;
@@ -2551,7 +2571,9 @@ impl<'a> Ui<'a> {
                         break;
                     }
                     if i % 2 == 1 {
-                        c.fill_rect(0.0, y, body.w, rh, &solid(rgba(241, 246, 254, 255)));
+                        // Moderno: o cinza bem leve das listas de hoje, não o azul.
+                        let z = if modern { rgba(244, 245, 247, 255) } else { rgba(241, 246, 254, 255) };
+                        c.fill_rect(0.0, y, body.w, rh, &solid(z));
                     }
                     i += 1;
                 }

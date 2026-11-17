@@ -106,11 +106,17 @@ fn lookup() -> &'static Mutex<Lookup> {
 
 /// Arquivo do ícone `name` no tema `theme` (ou nos que ele herda), perto de `px`.
 pub fn find(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
+    find_with(theme, name, px, false)
+}
+
+/// Como `find`; com `full`, o desenho vetorial (o colorido) vem antes das pastas de
+/// tamanho fixo: nos temas do Mide (WhiteSur), os de 16 a 24 px são só contorno.
+fn find_with(theme: &str, name: &str, px: u32, full: bool) -> Option<PathBuf> {
     if name.starts_with('/') {
         return Path::new(name).is_file().then(|| PathBuf::from(name));
     }
     let mut l = lookup().lock().ok()?;
-    let key = (theme.to_string(), name.to_string(), px);
+    let key = (theme.to_string(), name.to_string(), if full { px | 1 << 31 } else { px });
     if let Some(f) = l.found.get(&key) {
         return f.clone();
     }
@@ -150,7 +156,16 @@ pub fn find(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
                     let f = root.join(&d.path).join(format!("{name}.{ext}"));
                     if f.is_file() {
                         let eff = d.size * d.scale;
-                        let dist = if d.scalable { 1 } else if eff >= px { eff - px } else { (px - eff) * 2 + 8 };
+                        let dist = if d.scalable {
+                            if full { 0 } else { 1 }
+                        } else if full && d.size < 32 {
+                            // Fixos pequenos: só se não houver o vetorial.
+                            1000 + eff.abs_diff(px)
+                        } else if eff >= px {
+                            eff - px
+                        } else {
+                            (px - eff) * 2 + 8
+                        };
                         if best.as_ref().is_none_or(|(b, _)| dist < *b) {
                             best = Some((dist, f));
                         }
@@ -208,13 +223,39 @@ fn rasterize(path: &Path, px: u32) -> Option<Pixmap> {
 
 /// O ícone `name` do tema, pronto para desenhar com `px` pixels de lado.
 pub fn image(theme: &str, name: &str, px: u32) -> Option<std::rc::Rc<Pixmap>> {
+    image_with(theme, name, px, false, None)
+}
+
+/// O desenho colorido (vetorial) do ícone, mesmo pequeno (ver `find_with`).
+pub fn image_full(theme: &str, name: &str, px: u32) -> Option<std::rc::Rc<Pixmap>> {
+    image_with(theme, name, px, true, None)
+}
+
+/// Um ícone simbólico (`*-symbolic`) pintado de `tint` (só a forma dele vale).
+pub fn image_tinted(theme: &str, name: &str, px: u32, tint: tiny_skia::Color) -> Option<std::rc::Rc<Pixmap>> {
+    image_with(theme, name, px, false, Some(tint))
+}
+
+fn image_with(theme: &str, name: &str, px: u32, full: bool, tint: Option<tiny_skia::Color>) -> Option<std::rc::Rc<Pixmap>> {
     let px = px.clamp(8, 512);
-    let path = find(theme, name, px)?;
-    let key = (path.clone(), px);
+    let path = find_with(theme, name, px, full)?;
+    let tag = tint.map(|c| c.to_color_u8()).map(|c| format!("#{:02x}{:02x}{:02x}{:02x}", c.red(), c.green(), c.blue(), c.alpha())).unwrap_or_default();
+    let key = (PathBuf::from(format!("{}{tag}", path.display())), px);
     if let Some(hit) = RASTER.with(|r| r.borrow().iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())) {
         return hit;
     }
-    let img = rasterize(&path, px).map(std::rc::Rc::new);
+    let img = rasterize(&path, px).map(|mut pm| {
+        if let Some(c) = tint {
+            // Pré-multiplicado: cada pixel vira a cor pedida com o alfa dele.
+            let c = c.to_color_u8();
+            for p in pm.pixels_mut() {
+                let a = p.alpha() as u32 * c.alpha() as u32 / 255;
+                let k = |v: u8| (v as u32 * a / 255) as u8;
+                *p = tiny_skia::PremultipliedColorU8::from_rgba(k(c.red()), k(c.green()), k(c.blue()), a as u8).unwrap_or(*p);
+            }
+        }
+        std::rc::Rc::new(pm)
+    });
     RASTER.with(|r| {
         let mut r = r.borrow_mut();
         if r.len() >= 160 {

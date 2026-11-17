@@ -134,7 +134,7 @@ pub fn app_icon(app_id: &str) -> glove_paint::icons::Icon {
 pub fn theme_from_config() -> Theme {
     let c = glove_config::Config::load();
     glove_paint::icons::set_theme(&c.appearance.icon_theme);
-    let mut t = Theme::new(Variant::from_config(&c.theme));
+    let mut t = Theme::new(glove_paint::theme::visual().apply(Variant::from_config(&c.theme)));
     glove_paint::theme::set_style(&t);
     let (r, g, b) = glove_config::highlight_rgb(&c.appearance.highlight);
     t.highlight = glove_paint::draw::rgba(r, g, b, 255);

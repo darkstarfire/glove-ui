@@ -290,21 +290,32 @@ impl Ui<'_> {
         let body = Rect::new(sx + 14.0, y, sw - 28.0, sh - y - 52.0);
         self.c.fill_rect(body.x, body.y, body.w, body.h, &solid(rgba(255, 255, 255, 255)));
         self.c.stroke(rrect(body.x - 0.5, body.y - 0.5, body.w + 1.0, body.h + 1.0, 0.0), &solid(rgba(130, 130, 136, 255)), 1.0);
-        self.c.fill_rect(body.x, body.y, SIDE_W, body.h, &solid(rgba(231, 235, 241, 255)));
-        let mut places: Vec<(&str, PathBuf)> = vec![(tr!("Disco"), "/".into()), (tr!("Início"), home())];
-        for (label, key) in [(tr!("Mesa"), "DESKTOP"), (tr!("Documentos"), "DOCUMENTS"), (tr!("Downloads"), "DOWNLOAD"), (tr!("Imagens"), "PICTURES"), (tr!("Música"), "MUSIC")] {
+        let modern = self.theme.modern;
+        self.c.fill_rect(body.x, body.y, SIDE_W, body.h, &solid(if modern { rgba(240, 240, 242, 255) } else { rgba(231, 235, 241, 255) }));
+        use glove_paint::icons::FolderKind as F;
+        let mut places: Vec<(&str, PathBuf, Icon)> = vec![(tr!("Disco"), "/".into(), Icon::Disk), (tr!("Início"), home(), Icon::SpecialFolder(F::Home))];
+        for (label, key, kind) in [(tr!("Mesa"), "DESKTOP", F::Desktop), (tr!("Documentos"), "DOCUMENTS", F::Documents), (tr!("Downloads"), "DOWNLOAD", F::Downloads), (tr!("Imagens"), "PICTURES", F::Pictures), (tr!("Música"), "MUSIC", F::Music)] {
             if let Some(p) = user_dir(key) {
-                places.push((label, p));
+                places.push((label, p, Icon::SpecialFolder(kind)));
             }
         }
         let mut py = body.y + 4.0;
-        for (label, p) in places {
+        for (label, p, special) in places {
             let r = Rect::new(body.x, py, SIDE_W, ROW + 2.0);
             let here = fb.columns.first() == Some(&p);
-            if here {
-                self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(self.theme.menu_hot));
+            if modern {
+                // Moderno: pílula cinza na escolhida e ícones de contorno na cor de destaque.
+                if here {
+                    self.c.fill(rrect(r.x + 4.0, r.y, r.w - 8.0, r.h, 5.0), &solid(rgba(214, 214, 218, 255)));
+                }
+                icons::draw_sidebar(self.c, self.fonts, special, r.x + 8.0, r.y + 2.0, 16.0, self.theme.accent);
+            } else {
+                if here {
+                    self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(self.theme.menu_hot));
+                }
+                icons::draw_bare(self.c, self.fonts, if p == std::path::Path::new("/") { Icon::Disk } else { Icon::Folder }, r.x + 8.0, r.y + 2.0, 16.0, None);
             }
-            icons::draw_bare(self.c, self.fonts, if p == std::path::Path::new("/") { Icon::Disk } else { Icon::Folder }, r.x + 8.0, r.y + 2.0, 16.0, None);
+            let here = here && !modern;
             self.fonts.draw(self.c, label, r.x + 30.0, r.y + 14.5, 12.0, false, if here { glove_paint::Color::WHITE } else { ink });
             if self.hit(r).clicked {
                 fb.set_root(p);

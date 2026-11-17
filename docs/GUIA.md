@@ -96,6 +96,21 @@ Para fechar a janela pelo código: `ui.close = true`.
 | `alert(tipo, título, texto, &[botões]) -> Option<usize>` | Alerta em folha; o último botão é o padrão e "Cancelar" responde ao Esc |
 | `tab_strip(r, &títulos, ativa) -> Option<TabAction>` | Faixa de abas com × e +; devolve `Select`, `Close` ou `New` (altura `TAB_STRIP_H`) |
 
+## Visual clássico ou moderno
+
+O mesmo app tem dois visuais: o clássico (gel, listras, metal) e o moderno (liso,
+arredondado, claro ou escuro). Por padrão ele segue o que o usuário escolheu em Preferências ›
+Aparência. Para fixar um, chame `set_visual` antes do `run`:
+
+```rust
+glove_ui::set_visual(glove_ui::Visual::Modern); // ou Visual::Classic, Visual::System
+```
+
+Nada mais muda no código: os controles (botões, tabelas, barras de rolagem, campos, menus,
+barras laterais) se desenham no visual escolhido. No desenho próprio, consulte
+`ui.theme.modern` / `ui.theme.dark` (ou `glove_paint::theme::modern()`) e use
+`icons::draw_sidebar` nos ícones de barra lateral (de contorno no visual moderno).
+
 ## Várias janelas e descritores
 
 - `ui.open_window(id, opções)` abre outra janela do mesmo app; `ui.window_id()` diz qual está
