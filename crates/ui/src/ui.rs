@@ -737,6 +737,12 @@ impl<'a> Ui<'a> {
         self.mem.glove_cmds.push(format!("SHOT\t{}\t{}\t2", delay_ms.max(300), open as u8));
     }
 
+    /// Pede ao Glove a gravação de tela: `modo` 0 = tela inteira, 1 = uma área, 2 = uma
+    /// janela (como na captura), com o áudio do sistema e/ou do microfone.
+    pub fn request_recording(&mut self, modo: usize, audio_sistema: bool, microfone: bool) {
+        self.mem.glove_cmds.push(format!("GRAVAR\t{modo}\t{}\t{}", audio_sistema as u8, microfone as u8));
+    }
+
     /// Põe um arquivo na área de transferência de um jeito que continua valendo
     /// depois que o app fecha: no Glove, quem guarda é o compositor (uma imagem
     /// PNG vai também como imagem, para colar num chat); fora dele, o próprio app.
