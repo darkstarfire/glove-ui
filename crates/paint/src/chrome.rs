@@ -1599,18 +1599,20 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
     }
 }
 
-/// Dois botões de ligar (o ícone da central de controle): o de cima claro, com
-/// contorno e a bolinha escura à direita; o de baixo invertido, cheio, com a bolinha
-/// clara à esquerda. `light` é a cor do fundo da barra (para a bolinha "vazada").
-fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color, light: Color) {
-    // Em cima: claro, contorno, bolinha escura à direita.
-    c.fill(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(light));
+/// Dois botões de ligar (o ícone da central de controle): o de cima só no contorno, com a
+/// bolinha à direita; o de baixo cheio, com a bolinha à esquerda RECORTADA. As partes
+/// "claras" são vazadas, não pintadas: mostram o fundo de verdade (a barra clara, a escura
+/// ou o destaque com o menu aberto). Pintá-las com uma cor fixa deixava o ícone um bloco
+/// branco no tema escuro.
+fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
+    // Dois interruptores vazados: só o contorno da pílula e a bolinha cheia (em cima à
+    // direita, embaixo à esquerda). Sem nenhuma parte cheia grande: no tema claro fica só
+    // o traço escuro, e no escuro o ícone não vira um bloco branco.
     c.stroke(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(color), 1.2);
     c.fill(circle(x + 12.4, y + 3.8, 2.2), &solid(color));
-    // Embaixo: cheio, bolinha clara à esquerda.
-    let yy = y + 8.0;
-    c.fill(rrect(x + 0.0, yy, 16.2, 7.6, 3.8), &solid(color));
-    c.fill(circle(x + 3.8, yy + 3.8, 2.3), &solid(light));
+    let yy = y + 8.6;
+    c.stroke(rrect(x + 0.6, yy, 15.0, 6.4, 3.2), &solid(color), 1.2);
+    c.fill(circle(x + 3.8, yy + 3.2, 2.2), &solid(color));
 }
 
 /// Central de controle: o que ela mostra (None = o computador não tem).
@@ -1961,7 +1963,7 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { analog: Some((h, m)), .. } => clock_glyph(c, a + 14.0, 11.0, *h, *m, col),
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
-            Extra::Control => control_glyph(c, a + 7.0, 3.0, col, if is_open { theme.accent } else { rgba(250, 250, 250, 255) }),
+            Extra::Control => control_glyph(c, a + 7.0, 3.0, col),
             Extra::Recording { tempo, aceso } => {
                 // Bolinha vermelha (piscando) e o tempo decorrido ao lado.
                 let (c1, c2) = if *aceso {
@@ -2618,6 +2620,30 @@ mod control_tests {
 
     use super::*;
 
+    /// O ícone da central de controle é VAZADO: as duas chaves só no contorno, com o miolo
+    /// mostrando o fundo (a barra escura no tema escuro), nunca uma cor fixa. Antes partes
+    /// eram pintadas de branco e o ícone virava um bloco branco no tema escuro.
+    #[test]
+    fn icone_da_central_e_vazado() {
+        let fundo = rgba(30, 30, 34, 255);
+        let mut c = Canvas::new(24.0, 20.0, 4.0).unwrap();
+        c.fill_rect(0.0, 0.0, 24.0, 20.0, &solid(fundo));
+        control_glyph(&mut c, 2.0, 2.0, rgba(235, 235, 240, 255));
+        if let Ok(dir) = std::env::var("GLOVE_TESTE_PNG") {
+            c.pm.save_png(std::path::Path::new(&dir).join("icone-central-escuro.png")).unwrap();
+        }
+        let px = |x: f32, y: f32| {
+            let p = c.pm.pixel((x * 4.0) as u32, (y * 4.0) as u32).unwrap();
+            (p.red(), p.green(), p.blue())
+        };
+        // O miolo das duas chaves (longe do contorno e das bolinhas) mostra o fundo.
+        assert_eq!(px(2.0 + 6.0, 2.0 + 3.8), (30, 30, 34));
+        assert_eq!(px(2.0 + 10.0, 2.0 + 8.6 + 3.2), (30, 30, 34));
+        // As bolinhas são cheias, da cor do traço: em cima à direita, embaixo à esquerda.
+        assert_ne!(px(2.0 + 12.4, 2.0 + 3.8), (30, 30, 34));
+        assert_ne!(px(2.0 + 3.8, 2.0 + 8.6 + 3.2), (30, 30, 34));
+    }
+
     /// A central com tudo (botões e os três trilhos) cabe na altura medida.
     #[test]
     fn central_de_controle() {
@@ -2635,3 +2661,4 @@ mod control_tests {
         }
     }
 }
+

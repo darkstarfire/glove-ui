@@ -13,6 +13,32 @@ pub struct Pedido {
     child: Child,
 }
 
+/// Um formulário de senha na janela do glove-senha (`glove-senha --campos`): a senha de
+/// uma rede, trocar a senha da conta ou do chaveiro. A janela não confere nada; os
+/// valores voltam para quem pediu.
+pub struct Formulario<'a> {
+    pub titulo: &'a str,
+    pub mensagem: &'a str,
+    /// (rótulo, esconde o que é digitado).
+    pub campos: &'a [(&'a str, bool)],
+    pub botao: &'a str,
+    /// Nome do ícone (vazio = o cadeado).
+    pub icone: &'a str,
+    /// Os dois campos que têm de ser iguais (a senha nova e a confirmação).
+    pub confirmar: Option<(usize, usize)>,
+    /// Um aviso em vermelho ao abrir (a tentativa anterior não deu certo).
+    pub erro: Option<&'a str>,
+}
+
+/// O que um formulário respondeu.
+#[derive(Debug, PartialEq)]
+pub enum Valores {
+    Esperando,
+    Cancelado,
+    /// Os valores dos campos, na ordem.
+    Prontos(Vec<String>),
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Resposta {
     /// A janela ainda está aberta.
@@ -33,6 +59,38 @@ impl Pedido {
     /// None se o glove-senha não está instalado: quem chama pergunta na própria janela.
     pub fn novo(o_que: &str) -> Option<Self> {
         Self::com(Command::new(programa()).arg("--sudo").env("GLOVE_SENHA_MENSAGEM", o_que))
+    }
+
+    /// Abre o formulário. None se o glove-senha não está instalado.
+    pub fn formulario(f: &Formulario) -> Option<Self> {
+        let campos: Vec<String> = f.campos.iter().map(|(l, secret)| if *secret { format!("*{l}") } else { l.to_string() }).collect();
+        let mut cmd = Command::new(programa());
+        cmd.arg("--campos")
+            .env("GLOVE_SENHA_TITULO", f.titulo)
+            .env("GLOVE_SENHA_MENSAGEM", f.mensagem)
+            .env("GLOVE_SENHA_CAMPOS", campos.join("\n"))
+            .env("GLOVE_SENHA_BOTAO", f.botao)
+            .env("GLOVE_SENHA_ICONE", f.icone)
+            .env("GLOVE_SENHA_ERRO", f.erro.unwrap_or(""));
+        if let Some((a, b)) = f.confirmar {
+            cmd.env("GLOVE_SENHA_CONFIRMAR", format!("{a}-{b}"));
+        }
+        Self::com(&mut cmd)
+    }
+
+    /// Como está o formulário, sem esperar (para chamar a cada quadro).
+    pub fn valores(&mut self) -> Valores {
+        match self.child.try_wait() {
+            Ok(None) => Valores::Esperando,
+            Ok(Some(status)) if status.success() => {
+                let mut out = String::new();
+                if let Some(mut o) = self.child.stdout.take() {
+                    let _ = o.read_to_string(&mut out);
+                }
+                Valores::Prontos(out.lines().map(str::to_string).collect())
+            }
+            _ => Valores::Cancelado,
+        }
     }
 
     fn com(cmd: &mut Command) -> Option<Self> {
@@ -80,6 +138,22 @@ mod tests {
                 r => return r,
             }
         }
+    }
+
+    #[test]
+    fn valores_do_formulario() {
+        let mut p = Pedido::com(Command::new("sh").args(["-c", "printf 'fabio\\nsegredo\\n'"])).unwrap();
+        let t = Instant::now();
+        let v = loop {
+            match p.valores() {
+                Valores::Esperando if t.elapsed() < Duration::from_secs(5) => std::thread::sleep(Duration::from_millis(10)),
+                v => break v,
+            }
+        };
+        assert_eq!(v, Valores::Prontos(vec!["fabio".into(), "segredo".into()]));
+        let mut p = Pedido::com(Command::new("sh").args(["-c", "exit 1"])).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(p.valores(), Valores::Cancelado);
     }
 
     #[test]
