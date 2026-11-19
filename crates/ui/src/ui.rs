@@ -335,13 +335,82 @@ impl Input {
     }
 }
 
-struct PopupState {
+pub(crate) struct PopupState {
     /// Aberto neste quadro: ignora o clique que o abriu.
     fresh: bool,
-    id: Id,
+    pub(crate) id: Id,
+    /// Onde a lista aparece dentro da janela (o desenho de reserva).
     rect: Rect,
-    items: Vec<String>,
-    selected: usize,
+    pub(crate) items: Vec<String>,
+    pub(crate) selected: usize,
+    /// O botão da lista, em coordenadas da janela (a superfície própria se alinha a ele).
+    pub(crate) anchor: Rect,
+    /// Superfície própria (xdg_popup): `None` = ainda não tentada (a plataforma abre
+    /// depois do quadro), `Some(true)` = aberta, `Some(false)` = não deu, a lista é
+    /// desenhada dentro da janela, como antes.
+    pub(crate) native: Option<bool>,
+}
+
+/// Altura de cada item da lista suspensa e a folga em cima e embaixo.
+pub(crate) const POPUP_ITEM_H: f32 = 20.0;
+pub(crate) const POPUP_PAD: f32 = 4.0;
+/// Faixa das setas de rolagem da lista mais alta que a tela (como no Tiger).
+pub(crate) const POPUP_ARROW_H: f32 = 18.0;
+
+/// Desenha a lista suspensa aberta em `r`: sombra, fundo, itens (o atual com ✓ e o
+/// que está sob o mouse aceso). `scroll` desloca os itens para cima; `arrows` diz se
+/// há setas de rolagem em cima e embaixo (mais itens naquela direção). É o mesmo
+/// desenho dentro da janela (reserva) e na superfície própria.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_popup_list(c: &mut Canvas, fonts: &Fonts, theme: &Theme, r: Rect, items: &[String], selected: usize, hover: Option<usize>, scroll: f32, arrows: (bool, bool)) {
+    let item_h = POPUP_ITEM_H;
+    if let Some(sh) = Canvas::shadow(-10.0, 0.0, r.w + 20.0, r.h + 12.0, r.w, r.h, &ShadowSpec { blur: 10.0, offset_y: 3.0, radius: 5.0, alpha: 0.35 }, c.scale) {
+        c.draw_canvas(&sh, r.x - 10.0, r.y);
+    }
+    let bg = rgba(255, 255, 255, 245);
+    c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(bg));
+    c.stroke(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(rgba(0, 0, 0, 60)), 1.0 / c.scale);
+    // Com rolagem, os itens ficam entre as faixas das setas (recortados).
+    let (top, bottom) = (r.y + if arrows.0 { POPUP_ARROW_H } else { 0.0 }, r.y + r.h - if arrows.1 { POPUP_ARROW_H } else { 0.0 });
+    let clipped = scroll > 0.0 || arrows.0 || arrows.1;
+    if clipped {
+        let s = c.scale;
+        c.set_clip(Some([(r.x * s).floor() as i32, (top * s).floor() as i32, ((r.x + r.w) * s).ceil() as i32, (bottom * s).ceil() as i32]));
+    }
+    let first = ((scroll - POPUP_PAD) / item_h).floor().max(0.0) as usize;
+    for (i, it) in items.iter().enumerate().skip(first) {
+        let y = r.y + POPUP_PAD + i as f32 * item_h - scroll;
+        if y >= bottom {
+            break;
+        }
+        let hot = hover == Some(i);
+        if hot {
+            c.fill_rect(r.x, y, r.w, item_h, &vgrad(y, y + item_h, &[(0.0, lighten(theme.accent, 0.2)), (1.0, darken(theme.accent, 0.1))]));
+        }
+        let color = if hot { Color::WHITE } else { ink() };
+        if i == selected {
+            fonts.draw(c, "✓", r.x + 6.0, y + 15.0, 13.0, false, color);
+        }
+        fonts.draw(c, it, r.x + 22.0, y + 15.0, 13.0, false, color);
+    }
+    if clipped {
+        c.set_clip(None);
+    }
+    // Setas de rolagem: um triângulo no meio da faixa.
+    for (on, y0, up) in [(arrows.0, r.y, true), (arrows.1, r.y + r.h - POPUP_ARROW_H, false)] {
+        if !on {
+            continue;
+        }
+        let (cx, cy) = (r.x + r.w / 2.0, y0 + POPUP_ARROW_H / 2.0);
+        let d = if up { -1.0 } else { 1.0 };
+        let mut pb = glove_paint::tiny_skia::PathBuilder::new();
+        pb.move_to(cx - 5.0, cy - 2.5 * d);
+        pb.line_to(cx + 5.0, cy - 2.5 * d);
+        pb.line_to(cx, cy + 2.5 * d);
+        pb.close();
+        // Um pouco transparente: o modo escuro não troca a cor (fica clara no fundo escuro).
+        c.fill(pb.finish(), &solid(with_alpha(ink(), 0.85)));
+    }
 }
 
 /// Memória que sobrevive entre quadros.
@@ -349,9 +418,12 @@ struct PopupState {
 pub struct Memory {
     active: Option<Id>,
     focus: Option<Id>,
-    popup: Option<PopupState>,
+    pub(crate) popup: Option<PopupState>,
     /// Item escolhido no pop-up no quadro anterior: (id, índice).
-    popup_choice: Option<(Id, usize)>,
+    pub(crate) popup_choice: Option<(Id, usize)>,
+    /// A plataforma abre a lista suspensa numa superfície própria (pode passar das
+    /// bordas da janela). Sem isso, a lista é desenhada dentro da janela.
+    pub(crate) native_popups: bool,
     scroll: HashMap<Id, f32>,
     cursor: HashMap<Id, usize>,
     slider_grab: Option<Id>,
@@ -526,7 +598,13 @@ fn ink() -> Color {
 impl<'a> Ui<'a> {
     pub(crate) fn new(c: &'a mut Canvas, theme: &'a Theme, fonts: &'a Fonts, doc_fonts: &'a Fonts, resizable: bool, input: &'a Input, mem: &'a mut Memory) -> Self {
         let (w, h) = (c.w, c.h);
-        let captured = mem.popup.as_ref().is_some_and(|p| p.rect.contains(input.pos)) || mem.popup.is_some() && input.pressed;
+        let captured = match &mem.popup {
+            // Lista na superfície própria: a janela fica parada enquanto ela está aberta
+            // (um clique na janela só fecha a lista).
+            Some(p) if p.native == Some(true) => true,
+            Some(p) => p.rect.contains(input.pos) || input.pressed,
+            None => false,
+        };
         let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, sheet_blocked: false, clip_blocked: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
         ui.stack.push(Layout { horizontal: false, x0: 0.0, y0: 0.0, cx: 0.0, cy: 0.0, width: w, used_w: 0.0, used_h: 0.0, spacing: 8.0 });
         let _ = h;
@@ -1396,7 +1474,7 @@ impl<'a> Ui<'a> {
             let item_h = 20.0;
             let h = options.len() as f32 * item_h + 8.0;
             let y = (r.y - (*value as f32) * item_h - 4.0).clamp(2.0, (self.c.h - h - 2.0).max(2.0));
-            self.mem.popup = Some(PopupState { fresh: true, id, rect: Rect::new(r.x, y, r.w, h), items: options.to_vec(), selected: *value });
+            self.mem.popup = Some(PopupState { fresh: true, id, rect: Rect::new(r.x, y, r.w, h), items: options.to_vec(), selected: *value, anchor: r, native: None });
             self.redraw = true;
         }
 
@@ -2958,7 +3036,7 @@ impl<'a> Ui<'a> {
 
     pub(crate) fn finish(mut self) -> (bool, bool) {
         // Pop-up aberto: os itens acendem pela posição do mouse.
-        let sensitive = self.ptr_used.get() || self.mem.popup.is_some() || self.mem.capture.is_some();
+        let sensitive = self.ptr_used.get() || self.mem.popup.as_ref().is_some_and(|p| p.native != Some(true)) || self.mem.capture.is_some();
         self.mem.pointer_sensitive = sensitive;
         self.mem.hover_rects = std::mem::take(&mut *self.hover_log.borrow_mut());
         if self.resizable {
@@ -2987,45 +3065,22 @@ impl<'a> Ui<'a> {
             }
         }
         if let Some(mut p) = self.mem.popup.take() {
-            let r = p.rect;
-            let fresh = std::mem::replace(&mut p.fresh, false);
-            let item_h = 20.0;
-            let hover = if r.contains(self.input.pos) { Some(((self.input.pos.1 - r.y - 4.0) / item_h).floor() as isize) } else { None };
-            let mut keep = true;
-            if !fresh && (self.input.released || self.input.pressed) {
-                if let Some(h) = hover {
-                    if self.input.released {
-                        // Na margem (fora dos itens) só fecha, sem mudar o valor.
-                        if h >= 0 && (h as usize) < p.items.len() {
-                            self.mem.popup_choice = Some((p.id, h as usize));
-                        }
-                        keep = false;
+            match p.native {
+                // A plataforma abre a superfície própria logo depois deste quadro.
+                None if self.mem.native_popups => {
+                    p.fresh = false;
+                    self.mem.popup = Some(p);
+                }
+                // Aberta na superfície própria: um clique na janela (fora dela) fecha
+                // sem mudar nada; a plataforma some com a superfície.
+                Some(true) => {
+                    if self.input.pressed || self.input.right_pressed {
                         self.redraw = true;
+                    } else {
+                        self.mem.popup = Some(p);
                     }
-                } else if self.input.pressed {
-                    keep = false;
-                    self.redraw = true;
                 }
-            }
-            if keep {
-                if let Some(sh) = Canvas::shadow(-10.0, 0.0, r.w + 20.0, r.h + 12.0, r.w, r.h, &ShadowSpec { blur: 10.0, offset_y: 3.0, radius: 5.0, alpha: 0.35 }, self.c.scale) {
-                    self.c.draw_canvas(&sh, r.x - 10.0, r.y);
-                }
-                self.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(rgba(255, 255, 255, 245)));
-                self.c.stroke(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(rgba(0, 0, 0, 60)), 1.0 / self.c.scale);
-                for (i, it) in p.items.iter().enumerate() {
-                    let y = r.y + 4.0 + i as f32 * item_h;
-                    let hot = hover == Some(i as isize);
-                    if hot {
-                        self.c.fill_rect(r.x, y, r.w, item_h, &vgrad(y, y + item_h, &[(0.0, lighten(self.theme.accent, 0.2)), (1.0, darken(self.theme.accent, 0.1))]));
-                    }
-                    let color = if hot { Color::WHITE } else { ink() };
-                    if i == p.selected {
-                        self.fonts.draw(self.c, "✓", r.x + 6.0, y + 15.0, 13.0, false, color);
-                    }
-                    self.fonts.draw(self.c, it, r.x + 22.0, y + 15.0, 13.0, false, color);
-                }
-                self.mem.popup = Some(p);
+                _ => self.popup_in_window(p),
             }
         }
         if self.input.released {
@@ -3035,6 +3090,35 @@ impl<'a> Ui<'a> {
         let used = std::mem::take(&mut self.mem.scratch_used);
         self.mem.scratch.retain(|k, _| used.contains(k));
         (self.redraw, self.close)
+    }
+
+    /// A lista suspensa desenhada dentro da janela (reserva: sem superfície própria).
+    fn popup_in_window(&mut self, mut p: PopupState) {
+        let r = p.rect;
+        let fresh = std::mem::replace(&mut p.fresh, false);
+        let item_h = 20.0;
+        let hover = if r.contains(self.input.pos) { Some(((self.input.pos.1 - r.y - 4.0) / item_h).floor() as isize) } else { None };
+        let mut keep = true;
+        if !fresh && (self.input.released || self.input.pressed) {
+            if let Some(h) = hover {
+                if self.input.released {
+                    // Na margem (fora dos itens) só fecha, sem mudar o valor.
+                    if h >= 0 && (h as usize) < p.items.len() {
+                        self.mem.popup_choice = Some((p.id, h as usize));
+                    }
+                    keep = false;
+                    self.redraw = true;
+                }
+            } else if self.input.pressed {
+                keep = false;
+                self.redraw = true;
+            }
+        }
+        if keep {
+            let hot = hover.filter(|h| *h >= 0).map(|h| h as usize);
+            draw_popup_list(self.c, self.fonts, self.theme, r, &p.items, p.selected, hot, 0.0, (false, false));
+            self.mem.popup = Some(p);
+        }
     }
 }
 

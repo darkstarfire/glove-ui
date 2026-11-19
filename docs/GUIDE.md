@@ -85,7 +85,7 @@ To close the window from code: `ui.close = true`.
 | `label`, `heading`, `small`, `paragraph` | Text (normal, title, small, wrapped) |
 | `button(t) -> bool`, `default_button(t)` | Buttons; the default one pulses blue and answers Enter |
 | `checkbox(&mut bool, t)`, `radio_group(&mut usize, &[t])` | Check box and radio buttons |
-| `popup(&mut usize, &[String], width)` | Pop-up menu |
+| `popup(&mut usize, &[String], width)` | Pop-up menu (the list opens in its own surface: it can go past the window edges and scrolls when taller than the screen; `GLOVE_POPUP_IN_WINDOW=1` draws it inside the window) |
 | `slider(&mut f32, min, max, width)` | Slider |
 | `text_field(&mut String, width)`, `search_field(…)`, `text_area(&mut TextBuffer, r)` | Text fields |
 | `list(&mut Option<usize>, &[String], w, h)`, `table(…)` | List and multi-column table |

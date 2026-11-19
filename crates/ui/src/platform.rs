@@ -38,8 +38,9 @@ use smithay_client_toolkit::{
     },
     shell::{
         xdg::{
+            popup::{Popup, PopupConfigure, PopupHandler},
             window::{Window, WindowConfigure, WindowDecorations, WindowHandler},
-            XdgShell,
+            XdgPositioner, XdgShell, XdgSurface,
         },
         WaylandSurface,
     },
@@ -266,6 +267,8 @@ impl Shells {
         window.commit();
         let mut mem = Memory::with_app_icon(app_icon(&opts.app_id));
         mem.window_id = id;
+        // GLOVE_POPUP_IN_WINDOW=1: a lista suspensa desenhada dentro da janela (o jeito antigo).
+        mem.native_popups = std::env::var_os("GLOVE_POPUP_IN_WINDOW").is_none();
         Win {
             id,
             window,
@@ -350,10 +353,145 @@ struct Runner<A: App> {
     /// (o de uma tecla apertada no meio faria o compositor recusar).
     press_serial: u32,
     seat: Option<wl_seat::WlSeat>,
+    /// Lista suspensa aberta numa superfície própria (no máximo uma por vez).
+    list_popup: Option<ListPopup>,
+    /// O timer da rolagem pelas setas da lista está rodando.
+    list_scroll_timer: bool,
     // Menus na barra global
     menu_stream: Option<std::os::unix::net::UnixStream>,
     menu_sent: String,
     menu_shortcuts: std::collections::HashMap<String, String>,
+}
+
+/// Folga transparente em volta da lista suspensa para a sombra (esquerda, direita,
+/// embaixo); a geometria da janela do popup é só a lista.
+const LIST_SHADOW: (f32, f32, f32) = (10.0, 10.0, 12.0);
+
+/// Lista suspensa (`Ui::popup`) aberta numa superfície própria (xdg_popup): o
+/// compositor a põe ao lado do botão, pode passar das bordas da janela e, se não
+/// couber na tela, ela encolhe e rola (roda do mouse, setas, teclado).
+struct ListPopup {
+    popup: Popup,
+    viewport: Option<WpViewport>,
+    /// Janela dona e o widget que abriu (a escolha volta para ele).
+    win: u32,
+    id: crate::ui::Id,
+    items: Vec<String>,
+    selected: usize,
+    /// O botão, em coordenadas da janela: o item atual fica em cima dele.
+    anchor: crate::ui::Rect,
+    /// O pedido de posição ao compositor (para refazer sem deslizar, ver `configure`).
+    place: ListPlace,
+    /// Já se tentou a lista alta alinhada ao botão.
+    tall_tried: bool,
+    /// Largura da lista, altura da lista inteira e a altura que o compositor deu.
+    w: f32,
+    full_h: f32,
+    h: f32,
+    configured: bool,
+    /// Escala da janela dona (a lista sai igual, nítida em 1.5×).
+    scale: f32,
+    int_scale: i32,
+    scroll: f32,
+    /// Item aceso (pelo mouse ou pelo teclado) e onde está o mouse (coordenadas da lista).
+    hover: Option<usize>,
+    pos: Option<(f32, f32)>,
+    buffers: Vec<Buffer>,
+}
+
+/// Onde pedir a lista: tamanho, retângulo do botão na janela e deslocamento.
+#[derive(Clone, Copy)]
+struct ListPlace {
+    size: (i32, i32),
+    anchor: [i32; 4],
+    offset: (i32, i32),
+}
+
+impl ListPlace {
+    /// O posicionador: o canto da lista no botão, deslocado para o item atual ficar
+    /// em cima dele. Sem "virar" (o alinhamento do Tiger não tem lado certo). Com
+    /// `slide`, desliza para dentro da tela e, se nem assim couber, encolhe; sem, só
+    /// encolhe (a lista alta fica alinhada ao botão e rola).
+    fn positioner(&self, xdg: &XdgShell, slide: bool) -> Option<XdgPositioner> {
+        use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner::{Anchor, ConstraintAdjustment, Gravity};
+        let p = XdgPositioner::new(xdg).ok()?;
+        let [ax, ay, aw, ah] = self.anchor;
+        p.set_size(self.size.0, self.size.1);
+        p.set_anchor_rect(ax, ay, aw, ah);
+        p.set_anchor(Anchor::TopLeft);
+        p.set_gravity(Gravity::BottomRight);
+        p.set_offset(self.offset.0, self.offset.1);
+        let mut adj = ConstraintAdjustment::SlideX | ConstraintAdjustment::ResizeY;
+        if slide {
+            adj |= ConstraintAdjustment::SlideY;
+        }
+        p.set_constraint_adjustment(adj);
+        Some(p)
+    }
+}
+
+impl ListPopup {
+    fn max_scroll(&self) -> f32 {
+        (self.full_h - self.h).max(0.0)
+    }
+
+    /// Setas de rolagem em cima e embaixo (há mais itens naquela direção).
+    fn arrows(&self) -> (bool, bool) {
+        (self.scroll > 0.5, self.scroll < self.max_scroll() - 0.5)
+    }
+
+    fn set_scroll(&mut self, s: f32) {
+        self.scroll = s.clamp(0.0, self.max_scroll()).round();
+    }
+
+    /// Seta de rolagem sob o ponto: -1 (em cima), 1 (embaixo).
+    fn arrow_at(&self, (x, y): (f32, f32)) -> Option<f32> {
+        if x < 0.0 || x >= self.w {
+            return None;
+        }
+        let (up, down) = self.arrows();
+        if up && (0.0..crate::ui::POPUP_ARROW_H).contains(&y) {
+            Some(-1.0)
+        } else if down && y >= self.h - crate::ui::POPUP_ARROW_H && y < self.h {
+            Some(1.0)
+        } else {
+            None
+        }
+    }
+
+    /// Item sob o ponto (fora das setas e das margens, nenhum).
+    fn item_at(&self, (x, y): (f32, f32)) -> Option<usize> {
+        if x < 0.0 || x >= self.w || y < 0.0 || y >= self.h || self.arrow_at((x, y)).is_some() {
+            return None;
+        }
+        let i = ((y - crate::ui::POPUP_PAD + self.scroll) / crate::ui::POPUP_ITEM_H).floor();
+        (i >= 0.0 && (i as usize) < self.items.len()).then_some(i as usize)
+    }
+
+    /// Rola o mínimo para o item ficar à vista (entre as setas).
+    fn reveal(&mut self, i: usize) {
+        for _ in 0..3 {
+            let (up, down) = self.arrows();
+            let top = crate::ui::POPUP_PAD + i as f32 * crate::ui::POPUP_ITEM_H - self.scroll;
+            let lo = if up { crate::ui::POPUP_ARROW_H } else { 0.0 };
+            let hi = self.h - if down { crate::ui::POPUP_ARROW_H } else { 0.0 };
+            if top < lo {
+                self.set_scroll(self.scroll - (lo - top));
+            } else if top + crate::ui::POPUP_ITEM_H > hi {
+                self.set_scroll(self.scroll + (top + crate::ui::POPUP_ITEM_H - hi));
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+impl Drop for ListPopup {
+    fn drop(&mut self) {
+        if let Some(v) = self.viewport.take() {
+            v.destroy();
+        }
+    }
 }
 
 const TEXT_MIMES: [&str; 5] = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"];
@@ -481,6 +619,8 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
         last_serial: 0,
         press_serial: 0,
         seat: None,
+        list_popup: None,
+        list_scroll_timer: false,
         menu_stream: None,
         menu_sent: String::new(),
         menu_shortcuts: std::collections::HashMap::new(),
@@ -630,6 +770,9 @@ impl<A: App> Runner<A> {
     /// Fecha a janela atual; sem nenhuma, o app termina.
     fn close_current(&mut self) {
         let id = self.w.id;
+        if self.list_popup.as_ref().is_some_and(|l| l.win == id) {
+            self.list_popup = None;
+        }
         match self.others.pop() {
             Some(next) => {
                 // Soltar a janela fecha o toplevel no compositor.
@@ -1202,11 +1345,291 @@ impl<A: App> Runner<A> {
         if let Some(paths) = self.w.mem.drag_out.take() {
             self.start_drag(paths);
         }
+        // Não deu para abrir a lista na superfície própria: mais uma passada a
+        // desenha dentro da janela.
+        resized |= self.sync_list_popup();
         if let Some(id) = self.w.mem.paste_req.take() {
             let files = std::mem::take(&mut self.w.mem.paste_files);
             self.request_paste(id, files);
         }
         resized
+    }
+
+    /// Acompanha a lista suspensa da janela atual: abre a superfície própria para a
+    /// lista que o `Ui` acabou de abrir e some com ela quando o `Ui` a fechou (clique
+    /// na janela). Devolve verdadeiro se a lista vai ser desenhada dentro da janela
+    /// (não deu para abrir a superfície) e o quadro precisa ser refeito.
+    fn sync_list_popup(&mut self) -> bool {
+        let want = self.w.mem.popup.as_ref().map(|p| (p.id, p.native));
+        if self.list_popup.as_ref().is_some_and(|l| l.win == self.w.id && want.map(|w| w.0) != Some(l.id)) {
+            self.list_popup = None;
+        }
+        if let Some((_, None)) = want {
+            let ok = self.open_list_popup();
+            if let Some(p) = &mut self.w.mem.popup {
+                p.native = Some(ok);
+            }
+            return !ok;
+        }
+        false
+    }
+
+    /// Abre a lista suspensa numa superfície própria, ancorada no botão: o item atual
+    /// em cima dele, como no Tiger; o compositor desliza/encolhe para caber na tela.
+    fn open_list_popup(&mut self) -> bool {
+        use crate::ui::{POPUP_ITEM_H, POPUP_PAD};
+        // Uma lista por vez (outra janela pode ter deixado uma aberta).
+        if let Some(old) = self.list_popup.take() {
+            let (win, id) = (old.win, old.id);
+            drop(old);
+            let cur = self.w.id;
+            if win != cur && self.focus_id(win) {
+                if self.w.mem.popup.as_ref().is_some_and(|p| p.id == id) {
+                    self.w.mem.popup = None;
+                }
+                self.w.dirty = true;
+                self.focus_id(cur);
+            }
+        }
+        let Some(seat) = self.seat.clone() else { return false };
+        let Some(p) = self.w.mem.popup.as_ref() else { return false };
+        let (id, items, selected, anchor) = (p.id, p.items.clone(), p.selected, p.anchor);
+        if items.is_empty() {
+            return false;
+        }
+        // Larga o bastante para o nome mais comprido (com o ✓ à esquerda).
+        let text_w = items.iter().map(|t| self.fonts.measure(t, 13.0, false)).fold(0.0f32, f32::max);
+        let w = anchor.w.max(text_w + 22.0 + 16.0).ceil();
+        let full_h = (items.len() as f32 * POPUP_ITEM_H + 2.0 * POPUP_PAD).ceil();
+        // O retângulo do botão precisa estar dentro da janela.
+        let (ww, wh) = (self.w.width.max(1) as i32, self.w.height.max(1) as i32);
+        let ax = (anchor.x.floor() as i32).clamp(0, ww - 1);
+        let ay = (anchor.y.floor() as i32).clamp(0, wh - 1);
+        let aw = (anchor.w.ceil() as i32).clamp(1, ww - ax);
+        let ah = (anchor.h.ceil() as i32).clamp(1, wh - ay);
+        // O item atual na altura do botão (a lista começa acima dele).
+        let offset = ((anchor.x.floor() as i32) - ax, (anchor.y.floor() as i32) - ay - (POPUP_PAD + selected as f32 * POPUP_ITEM_H).round() as i32);
+        let place = ListPlace { size: (w as i32, full_h as i32), anchor: [ax, ay, aw, ah], offset };
+        let Some(positioner) = place.positioner(&self.shells.xdg, true) else { return false };
+        let surface = self.shells.compositor.create_surface(&self.qh);
+        let viewport = match (&self.shells.viewporter, &self.w.viewport) {
+            (Some(v), Some(_)) => Some(v.get_viewport(&surface, &self.qh, NoEvents)),
+            _ => None,
+        };
+        let popup = match Popup::from_surface(Some(self.w.window.xdg_surface()), &positioner, &self.qh, surface, &self.shells.xdg) {
+            Ok(p) => p,
+            Err(_) => {
+                if let Some(v) = viewport {
+                    v.destroy();
+                }
+                return false;
+            }
+        };
+        let (sl, _, _) = LIST_SHADOW;
+        popup.xdg_surface().set_window_geometry(sl as i32, 0, w as i32, full_h as i32);
+        // O grab (antes do primeiro commit): clicar fora fecha, o teclado vem para a lista.
+        popup.xdg_popup().grab(&seat, self.last_serial);
+        popup.wl_surface().commit();
+        let scale = if self.w.viewport.is_some() { self.w.scale } else { self.w.int_scale as f64 } as f32;
+        self.list_popup = Some(ListPopup {
+            popup,
+            viewport,
+            win: self.w.id,
+            id,
+            items,
+            selected,
+            anchor,
+            place,
+            tall_tried: false,
+            w,
+            full_h,
+            h: full_h,
+            configured: false,
+            scale,
+            int_scale: self.w.int_scale.max(1),
+            scroll: 0.0,
+            hover: None,
+            pos: None,
+            buffers: Vec::new(),
+        });
+        true
+    }
+
+    /// Pinta a lista na superfície dela (só quando algo muda: item aceso, rolagem).
+    fn draw_list_popup(&mut self) {
+        let Some(mut lp) = self.list_popup.take() else { return };
+        if lp.configured {
+            self.paint_list_popup(&mut lp);
+        }
+        self.list_popup = Some(lp);
+    }
+
+    fn paint_list_popup(&mut self, lp: &mut ListPopup) {
+        let (sl, sr, sb) = LIST_SHADOW;
+        let (lw, lh) = (lp.w + sl + sr, lp.h + sb);
+        let Some(mut c) = Canvas::new(lw, lh, lp.scale) else { return };
+        c.dark_remap = glove_paint::theme::dark();
+        glove_paint::draw::set_grad_remap((c.dark_remap, glove_paint::theme::modern()));
+        crate::ui::draw_popup_list(&mut c, &self.fonts, &self.theme, crate::ui::Rect::new(sl, 0.0, lp.w, lp.h), &lp.items, lp.selected, lp.hover, lp.scroll, lp.arrows());
+        let (pw, ph) = (c.px_width() as i32, c.px_height() as i32);
+        lp.buffers.retain(|b| b.height() == ph && b.stride() == pw * 4);
+        let idx = match lp.buffers.iter().position(|b| self.pool.canvas(b).is_some()) {
+            Some(i) => i,
+            None => {
+                let Ok((b, _)) = self.pool.create_buffer(pw, ph, pw * 4, wl_shm::Format::Argb8888) else { return };
+                if lp.buffers.len() >= 2 {
+                    lp.buffers.remove(0);
+                }
+                lp.buffers.push(b);
+                lp.buffers.len() - 1
+            }
+        };
+        let buffer = &lp.buffers[idx];
+        let Some(dst) = self.pool.canvas(buffer) else { return };
+        for (d, s) in dst.chunks_exact_mut(4).zip(c.data().chunks_exact(4)) {
+            d[0] = s[2];
+            d[1] = s[1];
+            d[2] = s[0];
+            d[3] = s[3];
+        }
+        let surface = lp.popup.wl_surface();
+        match &lp.viewport {
+            Some(v) => v.set_destination(lw as i32, lh as i32),
+            None => surface.set_buffer_scale(lp.int_scale),
+        }
+        lp.popup.xdg_surface().set_window_geometry(sl as i32, 0, lp.w as i32, lp.h as i32);
+        // Só a lista recebe o mouse (a sombra deixa passar: lá é "fora").
+        if let Ok(region) = smithay_client_toolkit::compositor::Region::new(&self.shells.compositor) {
+            region.add(sl as i32, 0, lp.w as i32, lp.h as i32);
+            surface.set_input_region(Some(region.wl_region()));
+        }
+        if buffer.attach_to(surface).is_ok() {
+            surface.damage_buffer(0, 0, pw, ph);
+            surface.commit();
+        }
+    }
+
+    /// Fecha a lista suspensa; com `choice`, o item escolhido volta para o widget.
+    fn finish_list_popup(&mut self, choice: Option<usize>) {
+        let Some(lp) = self.list_popup.take() else { return };
+        let (win, id) = (lp.win, lp.id);
+        drop(lp);
+        if self.focus_id(win) {
+            if let Some(i) = choice {
+                self.w.mem.popup_choice = Some((id, i));
+            }
+            if self.w.mem.popup.as_ref().is_some_and(|p| p.id == id) {
+                self.w.mem.popup = None;
+            }
+            self.w.dirty = true;
+            self.draw_now();
+        }
+    }
+
+    /// Mouse na lista suspensa: acende o item, rola, escolhe ao soltar o botão.
+    fn list_popup_pointer(&mut self, e: &PointerEvent) {
+        let Some(lp) = self.list_popup.as_mut() else { return };
+        let p = (e.position.0 as f32 - LIST_SHADOW.0, e.position.1 as f32);
+        let before = (lp.hover, lp.scroll);
+        let mut choose = None;
+        match e.kind {
+            PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                lp.pos = Some(p);
+                lp.hover = lp.item_at(p);
+            }
+            PointerEventKind::Leave { .. } => {
+                lp.pos = None;
+                lp.hover = None;
+            }
+            PointerEventKind::Press { serial, .. } => {
+                self.last_serial = serial;
+                self.press_serial = serial;
+            }
+            // Botão direito: nada (como no Mac).
+            PointerEventKind::Release { button: 0x111, .. } => {}
+            PointerEventKind::Release { .. } => {
+                lp.pos = Some(p);
+                // Na margem ou numa seta: nada (a lista continua aberta).
+                choose = lp.item_at(p);
+            }
+            PointerEventKind::Axis { vertical, .. } => {
+                let d = if vertical.absolute != 0.0 { vertical.absolute as f32 } else { vertical.discrete as f32 * 3.0 * crate::ui::POPUP_ITEM_H };
+                lp.set_scroll(lp.scroll + d);
+                if let Some(at) = lp.pos {
+                    lp.hover = lp.item_at(at);
+                }
+            }
+        }
+        let over_arrow = lp.pos.is_some_and(|at| lp.arrow_at(at).is_some());
+        let changed = before != (lp.hover, lp.scroll);
+        if let Some(i) = choose {
+            self.finish_list_popup(Some(i));
+            return;
+        }
+        if over_arrow {
+            self.start_list_scroll();
+        }
+        if changed {
+            self.draw_list_popup();
+        }
+    }
+
+    /// Mouse parado numa seta de rolagem: a lista rola sozinha enquanto ele estiver lá.
+    fn start_list_scroll(&mut self) {
+        if self.list_scroll_timer {
+            return;
+        }
+        self.list_scroll_timer = true;
+        let step = Duration::from_millis(30);
+        let _ = self.loop_handle.insert_source(Timer::from_duration(step), move |_, _, st: &mut Runner<A>| {
+            let Some(lp) = st.list_popup.as_mut() else {
+                st.list_scroll_timer = false;
+                return TimeoutAction::Drop;
+            };
+            let Some(dir) = lp.pos.and_then(|at| lp.arrow_at(at)) else {
+                st.list_scroll_timer = false;
+                return TimeoutAction::Drop;
+            };
+            lp.set_scroll(lp.scroll + dir * 8.0);
+            lp.hover = lp.pos.and_then(|at| lp.item_at(at));
+            st.draw_list_popup();
+            TimeoutAction::ToDuration(step)
+        });
+    }
+
+    /// Teclado com a lista aberta: ↑/↓ andam, Enter escolhe, Esc fecha sem mudar e
+    /// uma letra pula para o próximo item que começa com ela.
+    fn list_popup_key(&mut self, ev: &KeyEvent) {
+        let Some(lp) = self.list_popup.as_mut() else { return };
+        let n = lp.items.len();
+        let cur = lp.hover.unwrap_or(lp.selected).min(n.saturating_sub(1));
+        let page = ((lp.h / crate::ui::POPUP_ITEM_H).floor() as usize).saturating_sub(2).max(1);
+        let to = match ev.keysym {
+            Keysym::Escape => return self.finish_list_popup(None),
+            Keysym::Return | Keysym::KP_Enter | Keysym::space => {
+                let c = lp.hover;
+                return self.finish_list_popup(c);
+            }
+            Keysym::Up => Some(if lp.hover.is_none() { cur } else { cur.saturating_sub(1) }),
+            Keysym::Down => Some(if lp.hover.is_none() { cur } else { (cur + 1).min(n - 1) }),
+            Keysym::Home => Some(0),
+            Keysym::End => Some(n - 1),
+            Keysym::Page_Up => Some(cur.saturating_sub(page)),
+            Keysym::Page_Down => Some((cur + page).min(n - 1)),
+            _ => {
+                let typed = ev.utf8.as_deref().and_then(|t| t.chars().next()).filter(|c| !c.is_control());
+                typed.and_then(|ch| {
+                    let ch = ch.to_lowercase().to_string();
+                    let start = lp.hover.map_or(0, |h| h + 1);
+                    (0..n).map(|k| (start + k) % n).find(|&i| lp.items[i].to_lowercase().starts_with(&ch))
+                })
+            }
+        };
+        if let Some(i) = to {
+            lp.hover = Some(i);
+            lp.reveal(i);
+            self.draw_list_popup();
+        }
     }
 
     /// Começa a arrastar arquivos (para outra janela, outro app, a mesa), com um
@@ -1533,6 +1956,54 @@ impl<A: App> WindowHandler for Runner<A> {
     }
 }
 
+impl<A: App> PopupHandler for Runner<A> {
+    /// O compositor pôs a lista (talvez deslizada ou encolhida para caber na tela).
+    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup, cfg: PopupConfigure) {
+        let Some(lp) = self.list_popup.as_mut().filter(|l| &l.popup == popup) else { return };
+        // A lista não coube na tela e foi deslizada até o topo e cortada: como no Tiger,
+        // pede de novo sem deslizar (o item atual fica no botão e a lista rola), se
+        // assim sobrar espaço para uns itens. A primeira resposta diz onde a tela começa
+        // e acaba (em coordenadas da janela).
+        if !lp.configured && !lp.tall_tried && cfg.height > 0 && (cfg.height as f32) < lp.full_h && smithay_client_toolkit::reexports::client::Proxy::version(lp.popup.xdg_popup()) >= 3 {
+            lp.tall_tried = true;
+            let (st, sb) = (cfg.position.1 as f32, (cfg.position.1 + cfg.height) as f32);
+            let top = lp.anchor.y - crate::ui::POPUP_PAD - lp.selected as f32 * crate::ui::POPUP_ITEM_H;
+            let visible = (top + lp.full_h).min(sb) - top.max(st);
+            if visible >= (8.0 * crate::ui::POPUP_ITEM_H).min(cfg.height as f32) {
+                if let Some(p) = lp.place.positioner(&self.shells.xdg, false) {
+                    lp.popup.reposition(&p, 1);
+                    return;
+                }
+            }
+        }
+        if cfg.height > 0 {
+            lp.h = (cfg.height as f32).min(lp.full_h);
+        }
+        if cfg.width > 0 {
+            lp.w = cfg.width as f32;
+        }
+        if !lp.configured {
+            // O item atual em cima do botão, mesmo se a lista encolheu (rola até ele).
+            let button_y = lp.anchor.y - cfg.position.1 as f32;
+            let s = crate::ui::POPUP_PAD + lp.selected as f32 * crate::ui::POPUP_ITEM_H - button_y;
+            lp.set_scroll(s);
+            lp.reveal(lp.selected);
+        } else {
+            let s = lp.scroll;
+            lp.set_scroll(s);
+        }
+        lp.configured = true;
+        self.draw_list_popup();
+    }
+
+    /// Clique fora (noutro app, na mesa): fecha sem mudar o valor.
+    fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup) {
+        if self.list_popup.as_ref().is_some_and(|l| &l.popup == popup) {
+            self.finish_list_popup(None);
+        }
+    }
+}
+
 impl<A: App> SeatHandler for Runner<A> {
     fn seat_state(&mut self) -> &mut SeatState {
         &mut self.seat_state
@@ -1587,16 +2058,27 @@ impl<A: App> KeyboardHandler for Runner<A> {
         if !self.focus_surface(surface) {
             return;
         }
+        // O teclado foi para a lista suspensa desta janela: ela continua ativa.
+        if self.list_popup.as_ref().is_some_and(|l| l.win == self.w.id) {
+            return;
+        }
         self.w.input.active = false;
         self.w.dirty = true;
         self.draw_now();
     }
     fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, serial: u32, ev: KeyEvent) {
-        self.focus_keyboard();
         self.last_serial = serial;
+        // Lista suspensa aberta: o teclado é dela (como um menu).
+        if self.list_popup.is_some() {
+            return self.list_popup_key(&ev);
+        }
+        self.focus_keyboard();
         self.key(&ev);
     }
     fn repeat_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
+        if self.list_popup.is_some() {
+            return self.list_popup_key(&ev);
+        }
         self.focus_keyboard();
         self.key(&ev);
     }
@@ -1614,6 +2096,10 @@ impl<A: App> PointerHandler for Runner<A> {
         // Por janela: onde o mouse estava e se só houve movimento (sem botão, entrar, sair, roda).
         let mut motion_only: Vec<(u32, (f32, f32), bool)> = Vec::new();
         for e in events {
+            if self.list_popup.as_ref().is_some_and(|l| l.popup.wl_surface() == &e.surface) {
+                self.list_popup_pointer(e);
+                continue;
+            }
             if !self.focus_surface(&e.surface) {
                 continue;
             }

@@ -86,7 +86,7 @@ Para fechar a janela pelo código: `ui.close = true`.
 | `label`, `heading`, `small`, `paragraph` | Textos (normal, título, pequeno, com quebra de linha) |
 | `button(t) -> bool`, `default_button(t)` | Botões; o padrão é azul pulsante e responde ao Enter |
 | `checkbox(&mut bool, t)`, `radio_group(&mut usize, &[t])` | Caixa de seleção e botões de rádio |
-| `popup(&mut usize, &[String], largura)` | Menu de opções |
+| `popup(&mut usize, &[String], largura)` | Menu de opções (a lista abre numa superfície própria: passa das bordas da janela e rola se não couber na tela; `GLOVE_POPUP_IN_WINDOW=1` desenha dentro da janela) |
 | `slider(&mut f32, min, max, largura)` | Controle deslizante |
 | `text_field(&mut String, largura)`, `search_field(…)`, `text_area(&mut TextBuffer, r)` | Campos de texto |
 | `list(&mut Option<usize>, &[String], w, h)`, `table(…)` | Lista e tabela com colunas |
