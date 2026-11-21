@@ -2260,26 +2260,119 @@ const QS_ROW_H: f32 = 21.0;
 const QS_LABEL_W: f32 = 118.0;
 const QS_PAD: f32 = 6.0;
 
+/// Busca Rápida no Moderno: no centro da tela, campo grande e cantos arredondados.
+const QSM_W: f32 = 640.0;
+const QSM_HEADER: f32 = 52.0;
+const QSM_ROW_H: f32 = 28.0;
+const QSM_PAD: f32 = 8.0;
+const QSM_SHADOW: f32 = 30.0;
+const QSM_R: f32 = 12.0;
+
+/// (cabeçalho, linha, margem) da aparência atual.
+fn qs_metrics() -> (f32, f32, f32) {
+    if crate::theme::modern() { (QSM_HEADER, QSM_ROW_H, QSM_PAD) } else { (QS_HEADER, QS_ROW_H, QS_PAD) }
+}
+
+/// Largura do conteúdo do painel.
+pub fn qs_w() -> f32 {
+    if crate::theme::modern() { QSM_W } else { QS_W }
+}
+
+/// Onde o conteúdo começa dentro da imagem do painel (a margem da sombra): (x, y).
+pub fn quick_search_margin() -> (f32, f32) {
+    if crate::theme::modern() { (QSM_SHADOW, QSM_SHADOW) } else { (MENU_SHADOW as f32, 0.0) }
+}
+
 /// Altura do conteúdo do painel.
 pub fn quick_search_height(rows: usize, query_empty: bool, none: bool) -> f32 {
+    let (head, row, pad) = qs_metrics();
     if query_empty {
-        QS_HEADER
+        head
     } else if none {
-        QS_HEADER + 2.0 * QS_PAD + QS_ROW_H
+        head + 2.0 * pad + row
     } else {
-        QS_HEADER + 2.0 * QS_PAD + rows as f32 * QS_ROW_H
+        head + 2.0 * pad + rows as f32 * row
     }
 }
 
 /// Linha sob o y do conteúdo.
 pub fn quick_search_row_at(rows: usize, y: f32) -> Option<usize> {
-    let i = ((y - QS_HEADER - QS_PAD) / QS_ROW_H).floor();
+    let (head, row, pad) = qs_metrics();
+    let i = ((y - head - pad) / row).floor();
     (i >= 0.0 && (i as usize) < rows).then_some(i as usize)
+}
+
+/// A Busca Rápida do Moderno: um campo grande no centro da tela e os resultados embaixo,
+/// numa peça arredondada com sombra macia (o escuro vem do `PanelStyle`).
+#[allow(clippy::too_many_arguments)]
+fn quick_search_modern(fonts: &Fonts, theme: &Theme, query: &str, caret: bool, rows: &[QsRow], selected: Option<usize>, searching: bool, scale: f32) -> Option<Canvas> {
+    let none = rows.is_empty();
+    let (w, h) = (QSM_W, quick_search_height(rows.len(), query.is_empty(), none).ceil());
+    let m = QSM_SHADOW;
+    let mut c = Canvas::new(w + 2.0 * m, h + 2.0 * m, scale)?;
+    let _style = PanelStyle::begin(&mut c);
+    let s = ShadowSpec { blur: 22.0, offset_y: 8.0, radius: QSM_R, alpha: 0.30 };
+    if let Some(sh) = Canvas::shadow(-m, -m, w + 2.0 * m, h + 2.0 * m, w, h, &s, scale) {
+        c.draw_canvas(&sh, 0.0, 0.0);
+    }
+    let (x0, y0) = (m, m);
+    c.fill(rrect(x0, y0, w, h, QSM_R), &solid(rgba(246, 246, 248, 250)));
+    // O campo: a lupa e o texto grandes, sem moldura (o painel é o campo).
+    let ink = rgba(25, 25, 28, 255);
+    magnifier_glyph(&mut c, x0 + 18.0, y0 + 15.0, 22.0, rgba(120, 120, 126, 255));
+    let tx = x0 + 54.0;
+    let px = 22.0;
+    let fw = w - 54.0 - 46.0;
+    if query.is_empty() {
+        fonts.draw(&mut c, tr!("Busca Rápida"), tx, y0 + 34.0, px, false, rgba(160, 160, 166, 255));
+    }
+    let mut shown = query.to_string();
+    while fonts.measure(&shown, px, false) > fw && !shown.is_empty() {
+        shown.remove(0);
+    }
+    fonts.draw(&mut c, &shown, tx, y0 + 34.0, px, false, ink);
+    if caret {
+        let cx = tx + fonts.measure(&shown, px, false) + 1.0;
+        c.fill_rect(cx, y0 + 14.0, 1.5, 25.0, &solid(theme.accent));
+    }
+    if searching {
+        spinner(&mut c, x0 + w - 26.0, y0 + QSM_HEADER / 2.0, 8.0, 0.0, rgba(120, 120, 126, 255));
+    }
+    if !query.is_empty() {
+        c.hline(x0, y0 + QSM_HEADER - 0.5, w, rgba(218, 218, 222, 255));
+        let label_w = rows.iter().filter_map(|r| r.section.as_ref()).map(|t| fonts.measure(t, 11.0, true) + 30.0).fold(QS_LABEL_W, f32::max);
+        let top = y0 + QSM_HEADER + QSM_PAD;
+        if none {
+            fonts.draw(&mut c, tr!("Nenhum resultado"), x0 + label_w + 28.0, top + 19.0, 14.0, false, rgba(130, 130, 136, 255));
+        }
+        for (i, r) in rows.iter().enumerate() {
+            let y = top + i as f32 * QSM_ROW_H;
+            if let Some(sec) = &r.section {
+                if i > 0 {
+                    c.hline(x0 + 14.0, y - 0.5, w - 28.0, rgba(228, 228, 232, 255));
+                }
+                let sw = fonts.measure(sec, 11.0, true);
+                fonts.draw(&mut c, sec, x0 + label_w - 16.0 - sw, y + 18.0, 11.0, true, rgba(130, 130, 136, 255));
+            }
+            let sel = selected == Some(i);
+            if sel {
+                c.fill(rrect(x0 + label_w - 8.0, y + 1.0, w - label_w + 8.0 - 10.0, QSM_ROW_H - 2.0, 6.0), &solid(theme.accent));
+            }
+            icons::draw_bare(&mut c, fonts, r.icon, x0 + label_w, y + 4.0, 20.0, None);
+            let max = w - label_w - 44.0;
+            let name = fonts.ellipsize(&r.name, 14.0, false, max);
+            fonts.draw(&mut c, &name, x0 + label_w + 28.0, y + 19.0, 14.0, false, if sel { Color::WHITE } else { ink });
+        }
+    }
+    Some(c)
 }
 
 /// Painel da Busca Rápida com margem de sombra de menu (conteúdo em MENU_SHADOW, 0).
 #[allow(clippy::too_many_arguments)]
 pub fn quick_search(fonts: &Fonts, theme: &Theme, query: &str, caret: bool, rows: &[QsRow], selected: Option<usize>, searching: bool, scale: f32) -> Option<Canvas> {
+    if theme.modern {
+        return quick_search_modern(fonts, theme, query, caret, rows, selected, searching, scale);
+    }
     let none = rows.is_empty();
     let (w, h) = (QS_W, quick_search_height(rows.len(), query.is_empty(), none).ceil());
     let m = MENU_SHADOW as f32;
