@@ -1973,7 +1973,9 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
                 // Sigla numa plaquinha (como a bandeirinha do 10.4, sem bandeira).
                 let tw = fonts.measure(badge, 10.0, true);
                 c.fill(rrect(a + 7.0, 4.0, tw + 8.0, 14.0, 3.0), &solid(col));
-                let ink = if is_open { theme.accent } else { Color::WHITE };
+                // A sigla contrasta com a plaquinha (no escuro ela é clara: sigla escura).
+                let light = 0.3 * col.red() + 0.59 * col.green() + 0.11 * col.blue() > 0.6;
+                let ink = if is_open { theme.accent } else if light { rgba(40, 40, 44, 255) } else { Color::WHITE };
                 fonts.draw(c, badge, a + 11.0, 15.0, 10.0, true, ink);
             }
             Extra::Clock { analog: Some((h, m)), .. } => clock_glyph(c, a + 14.0, 11.0, *h, *m, col),

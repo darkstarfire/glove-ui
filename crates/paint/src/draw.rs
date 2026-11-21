@@ -1094,7 +1094,13 @@ impl Canvas {
     /// Metal escovado: gradiente vertical + riscos horizontais aleatórios.
     /// O resultado de cada faixa fica guardado (é o mesmo a cada quadro): só a
     /// primeira vez faz a conta pixel a pixel.
+    /// Na aparência Moderno não há metal: a faixa fica lisa, no tom médio (e escurece no
+    /// Moderno Escuro como os outros fundos claros).
     pub fn brushed_metal(&mut self, x: f32, y: f32, w: f32, h: f32, top: Color, bottom: Color) {
+        if crate::theme::modern() {
+            self.fill_rect(x, y, w, h, &solid(mix(top, bottom, 0.35)));
+            return;
+        }
         if self.rec.is_some() {
             let mut k = Fp::new(8);
             for v in [x, y, w, h] {
@@ -1176,6 +1182,9 @@ impl Canvas {
     /// Só muda na horizontal: uma linha calculada e repetida (bem mais barato que o
     /// degradê genérico, e esta faixa é desenhada várias vezes por quadro).
     pub fn metal_sheen(&mut self, x: f32, y: f32, w: f32, h: f32, full_w: f32) {
+        if crate::theme::modern() {
+            return;
+        }
         if self.rec.is_some() {
             let mut k = Fp::new(9);
             for v in [x, y, w, h, full_w] {
