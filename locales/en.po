@@ -773,3 +773,6 @@ msgstr "Modern Light"
 
 msgid "Moderno Escuro"
 msgstr "Modern Dark"
+
+msgid "Capturas de tela"
+msgstr "Screenshots"

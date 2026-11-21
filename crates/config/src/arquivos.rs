@@ -104,6 +104,38 @@ pub fn user_dir(key: &str) -> Option<PathBuf> {
     (p != home && p.is_dir()).then_some(p)
 }
 
+/// A pasta Imagens (a do user-dirs; senão ~/Imagens ou ~/Pictures, a que existir).
+pub fn pictures_dir() -> PathBuf {
+    if let Some(p) = user_dir("PICTURES") {
+        return p;
+    }
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    ["Imagens", "Pictures"].iter().map(|d| home.join(d)).find(|d| d.is_dir()).unwrap_or(home)
+}
+
+/// Onde vão as capturas de tela: a pasta de capturas dentro de Imagens (a que já
+/// existir, "Capturas de tela" ou "Screenshots"; senão a do idioma, criada agora).
+pub fn screenshots_dir() -> PathBuf {
+    let pics = pictures_dir();
+    for name in ["Capturas de tela", "Screenshots", tr!("Capturas de tela")] {
+        let d = pics.join(name);
+        if d.is_dir() {
+            return d;
+        }
+    }
+    let d = pics.join(tr!("Capturas de tela"));
+    if std::fs::create_dir_all(&d).is_ok() {
+        d
+    } else {
+        pics
+    }
+}
+
+/// O nome é de uma captura de tela do Glove ("Captura de tela 2026-…")?
+pub fn is_screenshot_name(name: &str) -> bool {
+    name.starts_with("Captura de tela ") || name.starts_with("Screenshot ") || name.starts_with(tr!("Captura de tela"))
+}
+
 // ---------------------------------------------------------------------------
 // Rótulos de cor
 // ---------------------------------------------------------------------------
