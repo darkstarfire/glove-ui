@@ -603,8 +603,19 @@ pub const DOCK_BASE: f32 = 56.0;
 pub const DOCK_MAX: f32 = 80.0;
 /// Espaço entre os ícones do Dock (os do estilo Tiger ocupam quase todo o quadrado).
 const DOCK_GAP: f32 = 8.0;
-const DOCK_PAD_X: f32 = 8.0;
+const DOCK_PAD_X_CLASSIC: f32 = 8.0;
 const DOCK_PAD_Y: f32 = 4.0;
+
+/// Margem dos lados da prateleira: no Moderno, mais fina (como em cima).
+fn dock_pad_x() -> f32 {
+    if crate::theme::modern() { 6.0 } else { DOCK_PAD_X_CLASSIC }
+}
+
+/// No Moderno a faixa de baixo é mais alta que as bordas de cima e dos lados: o
+/// pontinho de app aberto fica nela, com folga do ícone e da borda.
+fn dock_bottom_extra() -> f32 {
+    if crate::theme::modern() { 8.0 } else { 0.0 }
+}
 const DOCK_SEP: f32 = 14.0;
 const DOCK_LABEL_H: f32 = 26.0;
 
@@ -654,7 +665,7 @@ impl DockLayout {
 
 /// Espessura da prateleira do Dock (o que as janelas não podem cobrir), para ícones de `base`.
 pub fn dock_shelf_thickness(base: f32) -> f32 {
-    base + DOCK_PAD_Y + 11.0
+    base + DOCK_PAD_Y + 11.0 + dock_bottom_extra()
 }
 
 /// Posição de cada ícone com o Dock em `side`. `hover` é a coordenada ao longo do Dock.
@@ -690,7 +701,7 @@ pub fn dock_layout(items: &[DockItem], hover_x: Option<f32>, zoom: f32, base: f3
 pub fn dock_length(items: &[DockItem], base: f32, max: f32) -> f32 {
     let n = items.len() as f32;
     let seps = items.iter().filter(|i| i.separator_before).count() as f32;
-    n * (base + DOCK_GAP) - DOCK_GAP + seps * DOCK_SEP + (max - base).max(0.0) * 3.2 + 2.0 * DOCK_PAD_X + 4.0
+    n * (base + DOCK_GAP) - DOCK_GAP + seps * DOCK_SEP + (max - base).max(0.0) * 3.2 + 2.0 * dock_pad_x() + 4.0
 }
 
 /// Dock embaixo, com `label_room` de espaço acima dos ícones para o nome.
@@ -699,8 +710,8 @@ fn dock_layout_room(items: &[DockItem], hover_x: Option<f32>, zoom: f32, base: f
     let seps = items.iter().filter(|i| i.separator_before).count() as f32;
     let base_w = n * (base + DOCK_GAP) - DOCK_GAP + seps * DOCK_SEP;
     let extra = (max - base).max(0.0) * 3.2;
-    let width = (base_w + extra + 2.0 * DOCK_PAD_X).ceil() as u32 + 4;
-    let height = (label_room + max.max(base + 6.0) + 2.0 * DOCK_PAD_Y + 6.0).ceil() as u32;
+    let width = (base_w + extra + 2.0 * dock_pad_x()).ceil() as u32 + 4;
+    let height = (label_room + max.max(base + 6.0) + 2.0 * DOCK_PAD_Y + 6.0 + dock_bottom_extra()).ceil() as u32;
     let center = width as f32 / 2.0;
 
     let mut base_centers = Vec::with_capacity(items.len());
@@ -726,7 +737,7 @@ fn dock_layout_room(items: &[DockItem], hover_x: Option<f32>, zoom: f32, base: f
         .collect();
     let total: f32 = sizes.iter().sum::<f32>() + DOCK_GAP * (n - 1.0).max(0.0) + seps * DOCK_SEP;
 
-    let bottom = height as f32 - DOCK_PAD_Y - 6.0;
+    let bottom = height as f32 - DOCK_PAD_Y - 6.0 - dock_bottom_extra();
     let mut out = Vec::with_capacity(items.len());
     let mut x = center - total / 2.0;
     for (it, s) in items.iter().zip(&sizes) {
@@ -739,7 +750,7 @@ fn dock_layout_room(items: &[DockItem], hover_x: Option<f32>, zoom: f32, base: f
     // A prateleira envolve os ícones no tamanho normal; ampliados, eles saem por cima.
     // Folga em cima: o ícone não encosta na borda da prateleira (como no Tiger).
     let shelf_h = dock_shelf_thickness(base);
-    let shelf = (center - total / 2.0 - DOCK_PAD_X, height as f32 - shelf_h, total + 2.0 * DOCK_PAD_X, shelf_h);
+    let shelf = (center - total / 2.0 - dock_pad_x(), height as f32 - shelf_h, total + 2.0 * dock_pad_x(), shelf_h);
     DockLayout { width, height, items: out, shelf, side: DockSide::Bottom }
 }
 
@@ -872,6 +883,7 @@ pub fn dock_scene(fonts: &Fonts, items: &[DockItem], layout: &DockLayout, hover:
     // A prateleira e as bordas dela, sem passar das bordas do Dock.
     let (x0, y0) = ((sx - 2.0).max(0.0), (sy - 2.0).max(0.0));
     let (x1, y1) = ((sx + sw + 2.0).min(layout.width as f32), (sy + sh + 2.0).min(layout.height as f32));
+    let modern = crate::theme::modern();
     let mut sc = DockScene { shelf: (x0, y0, x1 - x0, y1 - y0), icons: Vec::new(), separators: Vec::new(), indicators: Vec::new(), label: None };
     for (i, (it, &(x, y, s))) in items.iter().zip(&layout.items).enumerate() {
         if it.separator_before {
@@ -899,6 +911,10 @@ pub fn dock_scene(fonts: &Fonts, items: &[DockItem], layout: &DockLayout, hover:
         if it.running {
             // Indicador de app aberto: pequeno triângulo escuro junto à borda da tela.
             sc.indicators.push(match side {
+                // Moderno: o pontinho no meio da faixa de baixo, longe do ícone e da borda.
+                DockSide::Bottom if modern => (x + s / 2.0 - 5.0, layout.height as f32 - 11.0),
+                DockSide::Left if modern => (6.0, y + s / 2.0 - 5.0),
+                DockSide::Right if modern => (layout.width as f32 - 13.0, y + s / 2.0 - 5.0),
                 DockSide::Bottom => (x + s / 2.0 - 5.0, layout.height as f32 - 7.0),
                 DockSide::Left => (0.0, y + s / 2.0 - 5.0),
                 DockSide::Right => (layout.width as f32 - 7.0, y + s / 2.0 - 5.0),
