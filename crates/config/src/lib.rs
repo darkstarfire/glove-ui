@@ -816,7 +816,7 @@ pub fn default_prefs_favorites() -> Vec<String> {
 }
 
 /// Aumente quando a lista padrão do Dock ganhar apps novos.
-pub const DOCK_REV: u32 = 9;
+pub const DOCK_REV: u32 = 10;
 
 /// O item do Dock que abre a grade com todos os apps (o compositor a mostra; não é um programa).
 pub const GRADE_ID: &str = "glove.Grade";
@@ -902,7 +902,7 @@ pub fn default_dock_apps() -> Vec<DockApp> {
         app(tr!("Arquivos"), "files", "glove-files", "glove.Files"),
         app(tr!("Todos os Apps"), "apps-grid", "", GRADE_ID),
         app("Terminal", "terminal", "glove-term", "glove.Terminal"),
-        app(tr!("Navegador"), "globe", "glove-navegador", "glove.Navegador"),
+        app("Jangada", "jangada", "glove-navegador", "glove.Navegador"),
         app(tr!("Correio"), "mail", "glove-correio", "glove.Correio"),
         app(tr!("Editor de Texto"), "editor", "glove-edit", "glove.TextEditor"),
         app(tr!("Lembretes"), "notes", "glove-notes", "glove.Notes"),
@@ -1114,6 +1114,11 @@ impl Config {
             ("org.gnome.Calculator", "glove.Calculator"),
         ];
         for a in &mut self.dock_apps {
+            // O Navegador virou a Jangada (o navegador do Glove), com o ícone dela.
+            if a.app_id == "glove.Navegador" && a.icon == "globe" {
+                a.icon = "jangada".into();
+                a.name = "Jangada".into();
+            }
             // O Firefox direto (perfil do Glove) virou o glove-navegador (NetSurf ou Firefox).
             if a.app_id == "firefox" && a.command.contains(".cache/glove/firefox") {
                 if let Some(d) = defaults.iter().find(|d| d.app_id == "glove.Navegador") {

@@ -190,6 +190,8 @@ struct Win {
     silent: std::collections::HashSet<[u32; 4]>,
     /// O quadro pedido só porque o mouse cruzou estas áreas (para aprender as mudas).
     probe: Option<Vec<[u32; 4]>>,
+    /// O cursor do mouse mudou neste quadro (a área cruzada não é muda).
+    cursor_moved: bool,
     /// Canvas reaproveitado enquanto o tamanho/escala não mudam.
     canvas: Option<Canvas>,
     /// Operações de desenho do quadro que está no canvas (redesenho parcial).
@@ -303,6 +305,7 @@ impl Shells {
             prev_key: (0, 0, 0),
             silent: Default::default(),
             probe: None,
+            cursor_moved: false,
             canvas: None,
             ops: Vec::new(),
             ops_valid: false,
@@ -342,6 +345,11 @@ struct Runner<A: App> {
     app: A,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<wl_pointer::WlPointer>,
+    /// O ponteiro com os formatos de cursor (seta, mãozinha, barra de texto) e o que
+    /// está valendo agora (`None` = mandar de novo, ex.: o mouse acabou de entrar).
+    themed: Option<smithay_client_toolkit::seat::pointer::ThemedPointer>,
+    cursor_on: Option<crate::ui::Cursor>,
+    conn: Connection,
     loop_handle: LoopHandle<'static, Runner<A>>,
     qh: QueueHandle<Runner<A>>,
     /// O relógio do `App::tick` está rodando (para de rodar quando o app devolve None).
@@ -618,6 +626,9 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
         app,
         keyboard: None,
         pointer: None,
+        themed: None,
+        cursor_on: None,
+        conn: conn.clone(),
         loop_handle: event_loop.handle(),
         qh: qh.clone(),
         tick_active,
@@ -986,8 +997,10 @@ impl<A: App> Runner<A> {
             let (pw, ph) = (canvas.px_width() as i32, canvas.px_height() as i32);
             let damage = frame_damage(&mut self.w.prev, canvas.data(), pw, ph, region.unwrap_or([0, 0, pw, ph]));
             // Quadro só do mouse cruzando áreas, e nada mudou: essas áreas são mudas.
+            // (Uma troca de cursor também conta como mudança: a área não é muda.)
+            let cursor_moved = std::mem::take(&mut self.w.cursor_moved);
             if let Some(crossed) = self.w.probe.take() {
-                if damage.is_empty() && pass == 0 && !had_events {
+                if damage.is_empty() && pass == 0 && !had_events && !cursor_moved {
                     if self.w.silent.len() > 4096 {
                         self.w.silent.clear();
                     }
@@ -1138,8 +1151,9 @@ impl<A: App> Runner<A> {
             frame_damage(&mut self.w.prev, canvas.data(), pw, ph, u)
         };
         // Quadro só do mouse cruzando áreas, e nada mudou: essas áreas são mudas.
+        let cursor_moved = std::mem::take(&mut self.w.cursor_moved);
         if let Some(crossed) = self.w.probe.take() {
-            if damage.is_empty() && passes == 1 && !first_events {
+            if damage.is_empty() && passes == 1 && !first_events && !cursor_moved {
                 if self.w.silent.len() > 4096 {
                     self.w.silent.clear();
                 }
@@ -1318,6 +1332,22 @@ impl<A: App> Runner<A> {
     fn after_frame(&mut self) -> bool {
         let mut resized = false;
         self.sync_alert_window();
+        // O cursor que o quadro pediu (só manda quando muda, com o mouse sobre a janela).
+        let want = self.w.mem.mouse_cursor;
+        if self.w.input.inside && self.cursor_on != Some(want) {
+            if let Some(t) = &self.themed {
+                use smithay_client_toolkit::seat::pointer::CursorIcon;
+                let icon = match want {
+                    crate::ui::Cursor::Arrow => CursorIcon::Default,
+                    crate::ui::Cursor::Hand => CursorIcon::Pointer,
+                    crate::ui::Cursor::Text => CursorIcon::Text,
+                };
+                if t.set_cursor(&self.conn, icon).is_ok() {
+                    self.cursor_on = Some(want);
+                    self.w.cursor_moved = true;
+                }
+            }
+        }
         for fd in std::mem::take(&mut self.w.mem.watch_req) {
             // Segurança: o app garante que o descritor vive enquanto observado.
             let src = Generic::new(unsafe { smithay_client_toolkit::reexports::calloop::generic::FdWrapper::new(fd) }, Interest::READ, Mode::Level);
@@ -2117,7 +2147,13 @@ impl<A: App> SeatHandler for Runner<A> {
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
     fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
         if cap == Capability::Pointer && self.pointer.is_none() {
-            self.pointer = self.seat_state.get_pointer(qh, &seat).ok();
+            let surface = self.shells.compositor.create_surface(qh);
+            self.themed = self.seat_state.get_pointer_with_theme::<_, ()>(qh, &seat, self.shm.wl_shm(), surface, smithay_client_toolkit::seat::pointer::ThemeSpec::default()).ok();
+            self.pointer = match &self.themed {
+                Some(t) => Some(t.pointer().clone()),
+                None => self.seat_state.get_pointer(qh, &seat).ok(),
+            };
+            self.cursor_on = None;
         }
         self.seat = Some(seat.clone());
         if self.data_device.is_none() {
@@ -2134,6 +2170,7 @@ impl<A: App> SeatHandler for Runner<A> {
     }
     fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat, cap: Capability) {
         if cap == Capability::Pointer {
+            self.themed = None;
             if let Some(p) = self.pointer.take() {
                 p.release();
             }
@@ -2220,7 +2257,10 @@ impl<A: App> PointerHandler for Runner<A> {
             }
             self.w.input.pos = (e.position.0 as f32, e.position.1 as f32);
             match e.kind {
-                PointerEventKind::Enter { .. } => self.w.input.inside = true,
+                PointerEventKind::Enter { .. } => {
+                    self.w.input.inside = true;
+                    self.cursor_on = None;
+                }
                 PointerEventKind::Leave { .. } => self.w.input.inside = false,
                 PointerEventKind::Motion { .. } => self.w.input.moved = true,
                 // Botão direito: só para menus de contexto (não é um clique comum).

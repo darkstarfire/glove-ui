@@ -11,6 +11,8 @@ pub enum Icon {
     /// O app Arquivos: pasta de gel azul com um rosto sorrindo.
     Files,
     Globe,
+    /// A Jangada, o navegador do Glove.
+    Jangada,
     TextEditor,
     Calculator,
     Settings,
@@ -185,6 +187,7 @@ impl Icon {
             "folder" => Icon::Folder,
             "files" => Icon::Files,
             "globe" | "browser" => Icon::Globe,
+            "jangada" => Icon::Jangada,
             "editor" | "text" => Icon::TextEditor,
             "calculator" => Icon::Calculator,
             "settings" => Icon::Settings,
@@ -310,6 +313,8 @@ impl Icon {
             Icon::Folder => "folder",
             Icon::Files => "system-file-manager",
             Icon::Globe => "web-browser",
+            // Fica com o desenho dela em qualquer tema (nenhum tema de fora tem a Jangada).
+            Icon::Jangada => "jangada",
             Icon::TextEditor => "accessories-text-editor",
             Icon::Calculator => "accessories-calculator",
             Icon::Settings => "preferences-system",
@@ -640,6 +645,7 @@ fn draw_raw(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, 
         Icon::Folder => folder(pm, x, y, s),
         Icon::Files => crate::tiger_real::files_app(pm, x, y, s),
         Icon::Globe => crate::tiger_real::compass(pm, fonts, x, y, s),
+        Icon::Jangada => crate::tiger_real::jangada(pm, x, y, s),
         Icon::TextEditor => crate::tiger_real::editor(pm, x, y, s),
         Icon::Calculator => crate::tiger::calculator(pm, fonts, x, y, s),
         Icon::Settings => crate::tiger_real::settings(pm, x, y, s),
@@ -987,6 +993,10 @@ pub enum Glyph {
     Action,
     Plus,
     Minus,
+    /// Parar (×): interromper o carregamento.
+    Stop,
+    /// Casinha: ir ao início.
+    Home,
     /// Linhas de comprimentos diferentes, encostadas à esquerda/no meio/à direita.
     AlignLeft,
     AlignCenter,
@@ -1179,6 +1189,29 @@ pub fn glyph(pm: &mut Canvas, g: Glyph, cx: f32, cy: f32, s: f32, color: Color) 
                 pm.fill_rect(cx - t / 2.0, cy - h * 0.7, t, s * 0.7, &ink);
             }
         }
+        Glyph::Stop => {
+            let d = s * 0.3;
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - d, cy - d);
+            pb.line_to(cx + d, cy + d);
+            pb.move_to(cx + d, cy - d);
+            pb.line_to(cx - d, cy + d);
+            pm.stroke_round(pb.finish(), &ink, (s * 0.13).max(1.4));
+        }
+        Glyph::Home => {
+            // Telhado e a casa, só no contorno, com a porta.
+            let w = s * 0.34;
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - w * 1.25, cy - s * 0.02);
+            pb.line_to(cx, cy - s * 0.4);
+            pb.line_to(cx + w * 1.25, cy - s * 0.02);
+            pb.move_to(cx - w, cy - s * 0.12);
+            pb.line_to(cx - w, cy + s * 0.38);
+            pb.line_to(cx + w, cy + s * 0.38);
+            pb.line_to(cx + w, cy - s * 0.12);
+            pm.stroke_round(pb.finish(), &ink, (s * 0.11).max(1.3));
+            pm.fill_rect(cx - s * 0.08, cy + s * 0.12, s * 0.16, s * 0.26, &ink);
+        }
     }
 }
 
@@ -1274,7 +1307,8 @@ pub fn theme_entries() -> Vec<(Icon, &'static str, &'static [&'static str])> {
         // Apps
         (Icon::Files, "apps", &["system-file-manager", "org.gnome.Nautilus", "nautilus", "glove-files"]),
         (Icon::Terminal, "apps", &["utilities-terminal", "org.gnome.Terminal", "org.gnome.Ptyxis", "org.gnome.Console", "glove-term"]),
-        (Icon::Globe, "apps", &["web-browser", "glove-navegador"]),
+        (Icon::Globe, "apps", &["internet-web-browser"]),
+        (Icon::Jangada, "apps", &["jangada", "web-browser", "glove-navegador"]),
         (Icon::TextEditor, "apps", &["accessories-text-editor", "org.gnome.TextEditor", "gedit", "glove-edit"]),
         (Icon::Calculator, "apps", &["accessories-calculator", "org.gnome.Calculator", "glove-calc"]),
         (Icon::Settings, "apps", &["preferences-system", "preferences-desktop", "org.gnome.Settings", "gnome-control-center", "glove-prefs"]),

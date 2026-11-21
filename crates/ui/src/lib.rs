@@ -30,3 +30,4 @@ pub use ui::{disclosure_triangle, AlertKind, Column, Rect, TableResponse, TableR
 pub use glove_paint::icons::Glyph;
 /// Visual do app: seguir as Preferências, sempre clássico ou sempre moderno (`set_visual(Visual::Modern)` antes do `run`).
 pub use glove_paint::theme::{set_visual, Visual};
+pub use ui::Cursor;

@@ -1337,3 +1337,89 @@ pub(crate) fn apps_place(pm: &mut Canvas, x: f32, y: f32, s: f32) {
     pm.fill(u.circ(0.5, 0.2, 0.07), &radial(u.px(0.48), u.py(0.18), u.d(0.09), &[(0.0, rgba(255, 255, 255, 255)), (0.6, rgba(170, 174, 184, 255)), (1.0, rgba(90, 94, 106, 255))]));
     pm.stroke(u.circ(0.5, 0.2, 0.07), &solid(rgba(60, 62, 72, 220)), u.lw(0.005));
 }
+
+// ---------------------------------------------------------------------------
+// Jangada (o navegador do Glove)
+// ---------------------------------------------------------------------------
+
+/// Jangada: a balsa de troncos do litoral brasileiro com a vela triangular cheia de
+/// vento, sobre um mar azul redondo (o "mundo" que ela navega). Arte própria.
+pub(crate) fn jangada(pm: &mut Canvas, x: f32, y: f32, s: f32) {
+    let u = U { x, y, s };
+    // O mar: um disco azul com o horizonte claro em cima (céu) e as ondas embaixo.
+    let (cx, cy, r) = (0.5, 0.53, 0.43);
+    let disc = u.circ(cx, cy, r);
+    soft_shadow(pm, disc.clone(), s, 1.0);
+    pm.fill(disc.clone(), &linear(0.0, u.py(cy - r), 0.0, u.py(cy + r), &[
+        (0.0, rgba(150, 214, 255, 255)),
+        (0.5, rgba(206, 236, 255, 255)),
+        (0.56, rgba(64, 156, 226, 255)),
+        (1.0, rgba(14, 70, 150, 255)),
+    ]));
+    // Ondas: arcos claros no mar.
+    if s >= 24.0 {
+        let mut w = PathBuilder::new();
+        for (yy, x0, x1) in [(0.68f32, 0.16f32, 0.42f32), (0.75, 0.55, 0.8), (0.82, 0.26, 0.5)] {
+            w.move_to(u.px(x0), u.py(yy));
+            let step = (x1 - x0) / 4.0;
+            for k in 0..4 {
+                let xa = x0 + step * k as f32;
+                w.quad_to(u.px(xa + step / 2.0), u.py(yy - 0.022), u.px(xa + step), u.py(yy));
+            }
+        }
+        pm.stroke(w.finish(), &solid(rgba(255, 255, 255, 120)), u.lw(0.012));
+    }
+    // A balsa: troncos de madeira, com as amarras escuras.
+    let raft = u.rr(0.2, 0.6, 0.6, 0.075, 0.035);
+    pm.fill(raft.clone(), &linear(0.0, u.py(0.6), 0.0, u.py(0.675), &[(0.0, rgba(236, 190, 130, 255)), (0.45, rgba(184, 124, 64, 255)), (1.0, rgba(110, 66, 28, 255))]));
+    pm.stroke(raft, &solid(rgba(80, 46, 18, 220)), u.lw(0.006));
+    if s >= 28.0 {
+        let mut ties = PathBuilder::new();
+        for xx in [0.3f32, 0.44, 0.58, 0.72] {
+            ties.move_to(u.px(xx), u.py(0.603));
+            ties.line_to(u.px(xx), u.py(0.672));
+        }
+        pm.stroke(ties.finish(), &solid(rgba(70, 40, 14, 200)), u.lw(0.01));
+        // O brilho dos troncos.
+        let mut hi = PathBuilder::new();
+        hi.move_to(u.px(0.24), u.py(0.614));
+        hi.line_to(u.px(0.76), u.py(0.614));
+        pm.stroke(hi.finish(), &solid(rgba(255, 236, 200, 150)), u.lw(0.008));
+    }
+    // O mastro.
+    let mast = u.rr(0.455, 0.1, 0.03, 0.52, 0.012);
+    pm.fill(mast, &linear(u.px(0.455), 0.0, u.px(0.485), 0.0, &[(0.0, rgba(120, 74, 32, 255)), (0.5, rgba(214, 160, 96, 255)), (1.0, rgba(96, 58, 24, 255))]));
+    // A vela: triângulo cheio de vento (a borda de fora curva), branca com as costuras.
+    let mut sail = PathBuilder::new();
+    sail.move_to(u.px(0.49), u.py(0.1));
+    sail.cubic_to(u.px(0.64), u.py(0.22), u.px(0.82), u.py(0.4), u.px(0.86), u.py(0.56));
+    sail.line_to(u.px(0.49), u.py(0.575));
+    sail.close();
+    let sail = sail.finish();
+    pm.fill(sail.clone(), &linear(u.px(0.49), u.py(0.2), u.px(0.86), u.py(0.56), &[
+        (0.0, rgba(255, 255, 255, 255)),
+        (0.6, rgba(244, 246, 250, 255)),
+        (1.0, rgba(200, 210, 224, 255)),
+    ]));
+    if s >= 32.0 {
+        let mut seams = PathBuilder::new();
+        for (yy, xe) in [(0.24f32, 0.62f32), (0.34, 0.71), (0.44, 0.79)] {
+            seams.move_to(u.px(0.49), u.py(yy));
+            seams.line_to(u.px(xe), u.py(yy + 0.03));
+        }
+        pm.stroke(seams.finish(), &solid(rgba(150, 162, 182, 130)), u.lw(0.005));
+    }
+    pm.stroke(sail, &solid(rgba(110, 120, 140, 200)), u.lw(0.006));
+    // A vela pequena da frente (a bujarrona), azul.
+    let jib = u.poly(&[(0.44, 0.2), (0.44, 0.56), (0.24, 0.56)]);
+    pm.fill(jib.clone(), &linear(u.px(0.24), u.py(0.56), u.px(0.44), u.py(0.2), &[(0.0, rgba(20, 110, 210, 255)), (1.0, rgba(110, 190, 255, 255))]));
+    pm.stroke(jib, &solid(rgba(10, 60, 130, 200)), u.lw(0.005));
+    // Bandeirola no alto do mastro.
+    let flag = u.poly(&[(0.47, 0.06), (0.6, 0.085), (0.47, 0.11)]);
+    pm.fill(flag, &solid(rgba(230, 70, 60, 255)));
+    // Aro do disco, com o brilho do vidro em cima.
+    pm.stroke(disc.clone(), &solid(rgba(10, 50, 110, 160)), u.lw(0.008));
+    if s >= 24.0 {
+        pm.fill_clipped(u.ov(0.18, 0.13, 0.64, 0.3), &linear(0.0, u.py(0.13), 0.0, u.py(0.43), &[(0.0, rgba(255, 255, 255, 110)), (1.0, rgba(255, 255, 255, 0))]), disc);
+    }
+}

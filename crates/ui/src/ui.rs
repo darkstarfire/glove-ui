@@ -423,9 +423,22 @@ pub(crate) struct AlertReq {
     pub buttons: Vec<String>,
 }
 
+/// Formato do cursor do mouse sobre a janela (o Glove desenha cada um).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Cursor {
+    #[default]
+    Arrow,
+    /// Mãozinha: links e coisas clicáveis numa página.
+    Hand,
+    /// Barra de texto: campos e textos que se escolhem.
+    Text,
+}
+
 /// Memória que sobrevive entre quadros.
 #[derive(Default)]
 pub struct Memory {
+    /// O cursor pedido neste quadro (`Ui::set_cursor`; volta à seta a cada quadro).
+    pub(crate) mouse_cursor: Cursor,
     /// Alertas em janela própria (regra do Glove: confirmar algo nunca fica dentro da
     /// janela do app): o pedido deste quadro, as respostas que chegaram e se há um aberto.
     pub(crate) alert_native: bool,
@@ -625,6 +638,7 @@ impl<'a> Ui<'a> {
         // fica parada (nada responde), como embaixo de uma folha.
         let captured = captured || mem.alert_open;
         mem.alert_req = None;
+        mem.mouse_cursor = Cursor::Arrow;
         let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, sheet_blocked: false, clip_blocked: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
         ui.stack.push(Layout { horizontal: false, x0: 0.0, y0: 0.0, cx: 0.0, cy: 0.0, width: w, used_w: 0.0, used_h: 0.0, spacing: 8.0 });
         let _ = h;
@@ -938,13 +952,19 @@ impl<'a> Ui<'a> {
     /// Faixa de abas (como a dos navegadores da época), na largura de `r`: cada
     /// aba com o título e o × de fechar, mais o "+" de abrir outra no fim.
     pub fn tab_strip(&mut self, r: Rect, titles: &[String], active: usize) -> Option<TabAction> {
+        self.tab_strip_with_icons(r, titles, &[], active)
+    }
+
+    /// Como `tab_strip`, com um ícone pequeno antes de cada título (ex.: o ícone do site
+    /// no navegador). `icons[i]` = None: só o título.
+    pub fn tab_strip_with_icons(&mut self, r: Rect, titles: &[String], icons: &[Option<&Canvas>], active: usize) -> Option<TabAction> {
         // Ids num escopo próprio: a faixa não muda os dos controles da janela (o foco fica).
         let mut out = None;
-        self.push_id("glove-faixa-de-abas", |ui| out = ui.tab_strip_inner(r, titles, active));
+        self.push_id("glove-faixa-de-abas", |ui| out = ui.tab_strip_inner(r, titles, icons, active));
         out
     }
 
-    fn tab_strip_inner(&mut self, r: Rect, titles: &[String], active: usize) -> Option<TabAction> {
+    fn tab_strip_inner(&mut self, r: Rect, titles: &[String], icons: &[Option<&Canvas>], active: usize) -> Option<TabAction> {
         let mut out = None;
         self.c.fill_rect(r.x, r.y, r.w, r.h, &vgrad(r.y, r.y + r.h, &[(0.0, rgba(176, 176, 180, 255)), (1.0, rgba(196, 196, 200, 255))]));
         self.c.hline(r.x, r.y, r.w, rgba(120, 120, 126, 255));
@@ -982,9 +1002,16 @@ impl<'a> Ui<'a> {
                     self.c.stroke(pb.finish(), &ink, 1.2);
                 }
             }
-            let label = self.fonts.ellipsize(t, 11.5, on, tab.w - 44.0);
+            let icon = icons.get(i).copied().flatten();
+            let iw = if icon.is_some() { 20.0 } else { 0.0 };
+            let label = self.fonts.ellipsize(t, 11.5, on, tab.w - 44.0 - iw);
             let lw = self.fonts.measure(&label, 11.5, on);
-            self.fonts.draw(self.c, &label, tab.x + (tab.w - lw) / 2.0, tab.y + tab.h / 2.0 + 4.0, 11.5, on, ink());
+            let lx = tab.x + (tab.w - lw - iw) / 2.0 + iw;
+            if let Some(ic) = icon {
+                // O ícone (16 pontos) logo antes do título.
+                self.c.draw_canvas(ic, lx - iw, tab.y + (tab.h - ic.h) / 2.0);
+            }
+            self.fonts.draw(self.c, &label, lx, tab.y + tab.h / 2.0 + 4.0, 11.5, on, ink());
             if on_close {
                 out = Some(TabAction::Close(i));
             } else if clicked && out.is_none() {
@@ -1149,6 +1176,11 @@ impl<'a> Ui<'a> {
     /// Algum botão do mouse foi pressionado ou solto neste quadro.
     pub fn mouse_buttons_changed(&self) -> bool {
         self.input.pressed || self.input.released || self.input.right_pressed
+    }
+
+    /// O cursor do mouse neste quadro (mãozinha, barra de texto); sem pedir, a seta.
+    pub fn set_cursor(&mut self, c: Cursor) {
+        self.mem.mouse_cursor = c;
     }
 
     /// 1 = clique simples, 2 = duplo, 3 = triplo (no quadro do clique; 0 sem clique).
@@ -1573,6 +1605,9 @@ impl<'a> Ui<'a> {
     /// Devolve (mudou, Enter pressionado).
     fn edit_line(&mut self, id: Id, r: Rect, value: &mut String) -> (bool, bool) {
         let hover = self.hovered(r);
+        if hover {
+            self.mem.mouse_cursor = Cursor::Text;
+        }
         if hover && self.input.pressed {
             self.mem.focus = Some(id);
             self.mem.cursor.insert(id, value.chars().count());

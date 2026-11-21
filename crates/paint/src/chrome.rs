@@ -1286,6 +1286,76 @@ pub fn cursor_arrow(scale: f32) -> Option<Canvas> {
     Some(c)
 }
 
+/// Ponta do dedo da mãozinha (ponto quente), em pontos lógicos.
+pub const HAND_HOTSPOT: (f32, f32) = (9.5, 2.0);
+
+/// Cursor de mãozinha (links e botões de páginas): uma luva branca apontando com o
+/// indicador, contorno preto e o punho da luva cinza. Desenho próprio do Glove.
+pub fn cursor_hand(scale: f32) -> Option<Canvas> {
+    let mut c = Canvas::new(26.0, 30.0, scale)?;
+    let shapes = |dx: f32, dy: f32| -> Vec<Option<tiny_skia::Path>> {
+        vec![
+            // Indicador em pé.
+            rrect(7.5 + dx, 1.0 + dy, 4.2, 13.0, 2.1),
+            // Os outros dedos dobrados (três nós) e a palma.
+            rrect(11.2 + dx, 8.6 + dy, 3.6, 6.0, 1.8),
+            rrect(14.4 + dx, 9.4 + dy, 3.6, 5.6, 1.8),
+            rrect(17.6 + dx, 10.4 + dy, 3.4, 5.2, 1.7),
+            rrect(6.2 + dx, 11.0 + dy, 14.8, 10.6, 4.0),
+            // Polegar, de lado.
+            rrect(2.6 + dx, 12.6 + dy, 6.6, 4.0, 2.0),
+            // O punho da luva.
+            rrect(7.0 + dx, 20.6 + dy, 12.0, 5.2, 1.2),
+        ]
+    };
+    for p in shapes(0.8, 1.4) {
+        c.fill(p, &solid(rgba(0, 0, 0, 55)));
+    }
+    for p in shapes(0.0, 0.0) {
+        c.stroke(p, &solid(rgba(0, 0, 0, 255)), 1.7);
+    }
+    let all = shapes(0.0, 0.0);
+    for (i, p) in all.into_iter().enumerate() {
+        let col = if i == 6 { rgba(205, 208, 214, 255) } else { Color::WHITE };
+        c.fill(p, &solid(col));
+    }
+    // Vincos entre os dedos e a costura do punho.
+    let mut pb = tiny_skia::PathBuilder::new();
+    for x in [14.6f32, 17.8] {
+        pb.move_to(x, 10.6);
+        pb.line_to(x, 14.0);
+    }
+    pb.move_to(7.6, 22.6);
+    pb.line_to(18.4, 22.6);
+    c.stroke(pb.finish(), &solid(rgba(90, 90, 96, 255)), 0.8);
+    Some(c)
+}
+
+/// Meio do cursor de texto (ponto quente).
+pub const IBEAM_HOTSPOT: (f32, f32) = (6.0, 11.0);
+
+/// Cursor de texto (a barra em I), preto com contorno branco.
+pub fn cursor_ibeam(scale: f32) -> Option<Canvas> {
+    let mut c = Canvas::new(12.0, 22.0, scale)?;
+    let beam = || {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(2.5, 2.0);
+        pb.quad_to(6.0, 2.0, 6.0, 4.5);
+        pb.quad_to(6.0, 2.0, 9.5, 2.0);
+        pb.move_to(6.0, 4.5);
+        pb.line_to(6.0, 17.5);
+        pb.move_to(2.5, 20.0);
+        pb.quad_to(6.0, 20.0, 6.0, 17.5);
+        pb.quad_to(6.0, 20.0, 9.5, 20.0);
+        pb.move_to(3.8, 11.0);
+        pb.line_to(8.2, 11.0);
+        pb.finish()
+    };
+    c.stroke_round(beam(), &solid(Color::WHITE), 3.4);
+    c.stroke_round(beam(), &solid(Color::BLACK), 1.4);
+    Some(c)
+}
+
 /// Lado do cursor de redimensionar (o ponto quente é o centro).
 pub const RESIZE_CURSOR_SIZE: f32 = 26.0;
 
