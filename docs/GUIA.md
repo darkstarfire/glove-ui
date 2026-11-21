@@ -143,6 +143,20 @@ O atalho de um item faz o mesmo que escolhê-lo. Os menus aparecem quando o app 
 Glove (o Dock, a Busca Rápida, o Terminal…), que liga o app à barra; fora do Glove, os atalhos
 continuam valendo.
 
+## Menus de contexto soltos
+
+No botão direito, peça o menu ao Glove: ele o desenha por cima de tudo (sem ficar preso à
+janela), os submenus abrem ao lado do item e a escolha chega em `menu_actions()`, como os da
+barra. Fora do Glove, `context_menu` devolve falso e o app desenha o menu na janela.
+
+```rust
+if ui.right_clicked(area) {
+    let itens = vec![MenuItem::new("copiar", tr!("Copiar"), ""), MenuItem::Separator,
+        MenuItem::submenu(tr!("Rótulo"), vec![MenuItem::new("vermelho", tr!("Vermelho"), "").swatch((252, 86, 76))])];
+    ui.context_menu(ui.pointer(), &itens);
+}
+```
+
 ## Abrir e salvar, imprimir
 
 `FileBrowser` mostra a folha de Abrir/Salvar do Glove (`ui.file_sheet(&mut fb)` devolve a

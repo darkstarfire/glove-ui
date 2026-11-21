@@ -142,6 +142,20 @@ An item's shortcut does the same as choosing it. Menus show up when the app is o
 (the Dock, Quick Search, the Terminal…), which connects the app to the bar; outside Glove the
 shortcuts still work.
 
+## Floating context menus
+
+On a right click, ask Glove for the menu: it draws it above everything (not clipped to the
+window), submenus open beside their item, and the choice arrives in `menu_actions()`, like the
+menu bar's. Outside Glove, `context_menu` returns false and the app draws the menu in its window.
+
+```rust
+if ui.right_clicked(area) {
+    let items = vec![MenuItem::new("copy", tr!("Copiar"), ""), MenuItem::Separator,
+        MenuItem::submenu(tr!("Rótulo"), vec![MenuItem::new("red", tr!("Vermelho"), "").swatch((252, 86, 76))])];
+    ui.context_menu(ui.pointer(), &items);
+}
+```
+
 ## Open, save, print
 
 `FileBrowser` shows Glove's Open/Save sheet (`ui.file_sheet(&mut fb)` returns the choice).

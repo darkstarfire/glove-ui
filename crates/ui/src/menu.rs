@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MenuItem {
-    Item { id: String, label: String, shortcut: String, enabled: bool, checked: bool },
+    Item { id: String, label: String, shortcut: String, enabled: bool, checked: bool, swatch: Option<(u8, u8, u8)> },
     Separator,
     /// Item com ▸ que abre outro menu.
     Submenu { label: String, items: Vec<MenuItem>, enabled: bool },
@@ -12,7 +12,7 @@ impl MenuItem {
     /// Item comum. Se tiver atalho (ex.: "Ctrl+S"), escolher o item equivale a
     /// pressionar o atalho: o app trata os dois casos no mesmo lugar.
     pub fn new(id: &str, label: &str, shortcut: &str) -> Self {
-        MenuItem::Item { id: id.into(), label: label.into(), shortcut: shortcut.into(), enabled: true, checked: false }
+        MenuItem::Item { id: id.into(), label: label.into(), shortcut: shortcut.into(), enabled: true, checked: false, swatch: None }
     }
     /// Submenu (ex.: "Abrir Recente ▸").
     pub fn submenu(label: &str, items: Vec<MenuItem>) -> Self {
@@ -32,6 +32,13 @@ impl MenuItem {
                 it.walk(out);
             }
         }
+    }
+    /// Bolinha de cor antes do nome (ex.: os rótulos do Arquivos).
+    pub fn swatch(mut self, rgb: (u8, u8, u8)) -> Self {
+        if let MenuItem::Item { swatch, .. } = &mut self {
+            *swatch = Some(rgb);
+        }
+        self
     }
     pub fn checked(mut self, on: bool) -> Self {
         if let MenuItem::Item { checked, .. } = &mut self {
@@ -68,13 +75,14 @@ fn clean(s: &str) -> String {
     s.replace(['\t', '\n'], " ")
 }
 
-fn serialize_items(items: &[MenuItem], out: &mut String) {
+pub(crate) fn serialize_items(items: &[MenuItem], out: &mut String) {
     for it in items {
         match it {
             MenuItem::Separator => out.push_str("SEP\n"),
-            MenuItem::Item { id, label, shortcut, enabled, checked } => {
+            MenuItem::Item { id, label, shortcut, enabled, checked, swatch } => {
                 let flags = format!("{}{}", if *enabled { "" } else { "d" }, if *checked { "c" } else { "" });
-                out.push_str(&format!("ITEM\t{}\t{}\t{}\t{}\n", clean(id), clean(label), clean(shortcut), flags));
+                let color = swatch.map(|(r, g, b)| format!("\t{r:02x}{g:02x}{b:02x}")).unwrap_or_default();
+                out.push_str(&format!("ITEM\t{}\t{}\t{}\t{}{color}\n", clean(id), clean(label), clean(shortcut), flags));
             }
             MenuItem::Submenu { label, items, enabled } => {
                 out.push_str(&format!("SUB\t{}\t{}\n", clean(label), if *enabled { "" } else { "d" }));

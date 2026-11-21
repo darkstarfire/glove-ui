@@ -805,6 +805,22 @@ impl<'a> Ui<'a> {
         self.mem.minimize_req = true;
     }
 
+    /// Menu de contexto solto: o Glove o desenha no ponto `at` da janela (em pontos), por
+    /// cima de tudo e sem ficar preso à janela; os submenus abrem ao lado do item, com a
+    /// primeira opção na altura dele, e só sobem se faltar espaço no monitor. O item
+    /// escolhido chega em `menu_actions()` (o id dele). Devolve falso fora do Glove (sem
+    /// a barra de menu dele): aí o app desenha o menu dentro da janela, como antes.
+    pub fn context_menu(&mut self, at: (f32, f32), items: &[crate::menu::MenuItem]) -> bool {
+        if !native_menus() || items.is_empty() {
+            return false;
+        }
+        let mut text = format!("CTX\t{}\t{}\n", at.0, at.1);
+        crate::menu::serialize_items(items, &mut text);
+        text.push_str("CTXEND");
+        self.mem.glove_cmds.push(text);
+        true
+    }
+
     /// Pede ao Glove uma captura da tela inteira daqui a `delay_ms`.
     pub fn request_screenshot(&mut self, delay_ms: u64, open: bool) {
         self.mem.glove_cmds.push(format!("SHOT\t{delay_ms}\t{}", open as u8));
@@ -3138,4 +3154,9 @@ pub fn pretty_combo(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" + ")
+}
+
+/// O app fala com o Glove (barra de menu global): os menus de contexto podem ser soltos.
+pub fn native_menus() -> bool {
+    std::env::var_os("GLOVE_MENU_SOCKET").is_some_and(|p| !p.is_empty())
 }
