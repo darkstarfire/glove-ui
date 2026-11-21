@@ -71,11 +71,13 @@ pub struct Desk {
     pub show_removable: bool,
     /// Manter organizado por: "" (livre), "nome", "data", "tamanho" ou "tipo".
     pub arrange: String,
+    /// Clicar numa área livre da mesa mostra a mesa (afasta as janelas, como o F11).
+    pub click_shows_desktop: bool,
 }
 
 impl Default for Desk {
     fn default() -> Self {
-        Self { icon_size: 52, text_size: 12, label_right: false, show_disks: true, show_removable: true, arrange: String::new() }
+        Self { icon_size: 52, text_size: 12, label_right: false, show_disks: true, show_removable: true, arrange: String::new(), click_shows_desktop: false }
     }
 }
 
