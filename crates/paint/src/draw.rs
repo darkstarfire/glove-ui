@@ -860,6 +860,11 @@ impl Canvas {
     pub fn data(&self) -> &[u8] {
         self.base().data()
     }
+    /// Os pixels (RGBA pré-multiplicado, linha a linha) de um canvas avulso, para quem
+    /// os preenche direto (ex.: a página do navegador vinda do motor).
+    pub fn pixels_mut(&mut self) -> &mut [u8] {
+        self.pm.data_mut()
+    }
 
     fn t(&self) -> Transform {
         Transform::from_scale(self.scale, self.scale).post_translate(-self.off.0 as f32, -self.off.1 as f32)

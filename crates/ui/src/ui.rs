@@ -1151,6 +1151,16 @@ impl<'a> Ui<'a> {
         self.input.pressed || self.input.released || self.input.right_pressed
     }
 
+    /// 1 = clique simples, 2 = duplo, 3 = triplo (no quadro do clique; 0 sem clique).
+    pub fn click_count(&self) -> u8 {
+        self.input.clicks
+    }
+
+    /// O mouse está sobre a janela.
+    pub fn pointer_inside(&self) -> bool {
+        self.input.inside
+    }
+
     /// O botão do mouse foi solto neste quadro.
     pub fn mouse_released(&self) -> bool {
         self.input.released
