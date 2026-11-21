@@ -142,6 +142,13 @@ An item's shortcut does the same as choosing it. Menus show up when the app is o
 (the Dock, Quick Search, the Terminal…), which connects the app to the bar; outside Glove the
 shortcuts still work.
 
+## Alerts
+
+`ui.alert(kind, title, text, &buttons)` returns the chosen button (the last one is the default, the
+blue one). In Glove, the alert opens in its **own window** attached to the app's window (never
+inside it), and the app's window stays still until the answer; the app's code is the same. Outside
+Glove (or with `GLOVE_ALERT_SHEET=1`), it is a sheet inside the window.
+
 ## Floating context menus
 
 On a right click, ask Glove for the menu: it draws it above everything (not clipped to the

@@ -143,6 +143,13 @@ O atalho de um item faz o mesmo que escolhê-lo. Os menus aparecem quando o app 
 Glove (o Dock, a Busca Rápida, o Terminal…), que liga o app à barra; fora do Glove, os atalhos
 continuam valendo.
 
+## Alertas
+
+`ui.alert(tipo, título, texto, &botões)` devolve o botão escolhido (o último é o principal, o azul).
+No Glove, o alerta abre numa **janela própria** presa à janela do app (nunca dentro dela), e a
+janela do app fica parada até a resposta; o código do app é o mesmo. Fora do Glove (ou com
+`GLOVE_ALERT_SHEET=1`), ele é uma folha dentro da janela.
+
 ## Menus de contexto soltos
 
 No botão direito, peça o menu ao Glove: ele o desenha por cima de tudo (sem ficar preso à

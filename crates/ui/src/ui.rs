@@ -413,9 +413,25 @@ pub(crate) fn draw_popup_list(c: &mut Canvas, fonts: &Fonts, theme: &Theme, r: R
     }
 }
 
+/// Alerta pedido pelo app neste quadro, para a janela própria dele.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AlertReq {
+    pub key: u64,
+    pub kind: AlertKind,
+    pub title: String,
+    pub text: String,
+    pub buttons: Vec<String>,
+}
+
 /// Memória que sobrevive entre quadros.
 #[derive(Default)]
 pub struct Memory {
+    /// Alertas em janela própria (regra do Glove: confirmar algo nunca fica dentro da
+    /// janela do app): o pedido deste quadro, as respostas que chegaram e se há um aberto.
+    pub(crate) alert_native: bool,
+    pub(crate) alert_req: Option<AlertReq>,
+    pub(crate) alert_results: Vec<(u64, usize)>,
+    pub(crate) alert_open: bool,
     active: Option<Id>,
     focus: Option<Id>,
     pub(crate) popup: Option<PopupState>,
@@ -605,6 +621,10 @@ impl<'a> Ui<'a> {
             Some(p) => p.rect.contains(input.pos) || input.pressed,
             None => false,
         };
+        // O alerta da janela abre numa janela própria: enquanto ela está aberta, esta
+        // fica parada (nada responde), como embaixo de uma folha.
+        let captured = captured || mem.alert_open;
+        mem.alert_req = None;
         let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, sheet_blocked: false, clip_blocked: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
         ui.stack.push(Layout { horizontal: false, x0: 0.0, y0: 0.0, cx: 0.0, cy: 0.0, width: w, used_w: 0.0, used_h: 0.0, spacing: 8.0 });
         let _ = h;
@@ -2058,6 +2078,22 @@ impl<'a> Ui<'a> {
     /// botões, o primeiro fica afastado à esquerda (ex.: "Não salvar").
     /// Devolve o índice do botão escolhido.
     pub fn alert(&mut self, kind: AlertKind, title: &str, text: &str, buttons: &[&str]) -> Option<usize> {
+        // No Glove, o alerta é uma janela própria, presa a esta (a resposta volta aqui,
+        // num quadro seguinte). Fora dele, a folha dentro da janela, como antes.
+        if self.mem.alert_native {
+            use std::hash::{Hash, Hasher};
+            let mut hs = std::collections::hash_map::DefaultHasher::new();
+            (kind as u8, title, text, buttons).hash(&mut hs);
+            let key = hs.finish();
+            if let Some(p) = self.mem.alert_results.iter().position(|r| r.0 == key) {
+                let (_, i) = self.mem.alert_results.remove(p);
+                self.mem.alert_open = false;
+                return Some(i);
+            }
+            self.mem.alert_req = Some(AlertReq { key, kind, title: title.into(), text: text.into(), buttons: buttons.iter().map(|b| b.to_string()).collect() });
+            self.set_enabled(false);
+            return None;
+        }
         self.alert_impl(kind, title, text, buttons, true)
     }
 
@@ -2178,7 +2214,9 @@ impl<'a> Ui<'a> {
             };
             gel_rect(self.c, r.x, r.y, r.w, r.h, r.h / 2.0, base);
             let bw = self.fonts.measure(b, TEXT, false);
-            self.fonts.draw(self.c, b, r.x + (r.w - bw) / 2.0, r.y + 15.5, TEXT, false, ink());
+            // Moderno: o botão principal (azul) tem o texto branco, no claro e no escuro.
+            let col = if i == last && self.theme.modern { Color::WHITE } else { ink() };
+            self.fonts.draw(self.c, b, r.x + (r.w - bw) / 2.0, r.y + 15.5, TEXT, false, col);
             if clicked {
                 chosen = Some(i);
             }

@@ -216,6 +216,9 @@ struct Win {
     shown: bool,
     // Clique duplo/triplo
     last_click: (u32, (f32, f32), u8),
+    app_id: String,
+    /// Janela de alerta aberta pelo glove-ui (não pelo app): (janela dona, o alerta).
+    alert_of: Option<(u32, crate::ui::AlertReq)>,
 }
 
 /// O que o usuário aumentou além do mínimo, nos eixos em que ele mexeu (`touched`); os
@@ -248,12 +251,17 @@ struct Shells {
 
 impl Shells {
     fn open<A: App>(&self, qh: &QueueHandle<Runner<A>>, id: u32, opts: &WindowOptions) -> Win {
+        self.open_with(qh, id, opts, false)
+    }
+
+    /// `bare`: sem a barra de título do Glove (a janela do alerta desenha tudo).
+    fn open_with<A: App>(&self, qh: &QueueHandle<Runner<A>>, id: u32, opts: &WindowOptions, bare: bool) -> Win {
         let surface = self.compositor.create_surface(qh);
         let (viewport, frac) = match (&self.frac_mgr, &self.viewporter) {
             (Some(m), Some(v)) => (Some(v.get_viewport(&surface, qh, NoEvents)), Some(m.get_fractional_scale(&surface, qh, FracData))),
             _ => (None, None),
         };
-        let deco = if OWN_FRAME.load(std::sync::atomic::Ordering::Relaxed) { WindowDecorations::RequestClient } else { WindowDecorations::RequestServer };
+        let deco = if bare || OWN_FRAME.load(std::sync::atomic::Ordering::Relaxed) { WindowDecorations::RequestClient } else { WindowDecorations::RequestServer };
         let window = self.xdg.create_window(surface, deco, qh);
         window.set_title(opts.title.clone());
         window.set_app_id(opts.app_id.clone());
@@ -269,6 +277,8 @@ impl Shells {
         mem.window_id = id;
         // GLOVE_POPUP_IN_WINDOW=1: a lista suspensa desenhada dentro da janela (o jeito antigo).
         mem.native_popups = std::env::var_os("GLOVE_POPUP_IN_WINDOW").is_none();
+        // GLOVE_ALERT_SHEET=1: os alertas como folha dentro da janela (o jeito antigo).
+        mem.alert_native = crate::ui::native_menus() && std::env::var_os("GLOVE_ALERT_SHEET").is_none();
         Win {
             id,
             window,
@@ -307,6 +317,8 @@ impl Shells {
             touched: (false, false),
             shown: false,
             last_click: (0, (0.0, 0.0), 0),
+            app_id: opts.app_id.clone(),
+            alert_of: None,
         }
     }
 }
@@ -355,6 +367,8 @@ struct Runner<A: App> {
     seat: Option<wl_seat::WlSeat>,
     /// Lista suspensa aberta numa superfície própria (no máximo uma por vez).
     list_popup: Option<ListPopup>,
+    /// Respostas de alertas escolhidas neste quadro: (janela dona, alerta, botão).
+    alert_done: Vec<(u32, u64, usize)>,
     /// O timer da rolagem pelas setas da lista está rodando.
     list_scroll_timer: bool,
     // Menus na barra global
@@ -620,6 +634,7 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
         press_serial: 0,
         seat: None,
         list_popup: None,
+        alert_done: Vec::new(),
         list_scroll_timer: false,
         menu_stream: None,
         menu_sent: String::new(),
@@ -773,6 +788,16 @@ impl<A: App> Runner<A> {
         if self.list_popup.as_ref().is_some_and(|l| l.win == id) {
             self.list_popup = None;
         }
+        // Janela de alerta: some e a resposta vai para a dona (o app não sabe dela).
+        if let Some((parent, _)) = self.w.alert_of.clone() {
+            if let Some(next) = self.others.pop() {
+                drop(std::mem::replace(&mut self.w, next));
+            }
+            self.deliver_alerts(parent);
+            return;
+        }
+        // As janelas de alerta desta vão junto.
+        self.others.retain(|o| o.alert_of.as_ref().is_none_or(|(p, _)| *p != id));
         match self.others.pop() {
             Some(next) => {
                 // Soltar a janela fecha o toplevel no compositor.
@@ -783,6 +808,57 @@ impl<A: App> Runner<A> {
                 self.app.window_closed(id);
                 self.exit = true;
             }
+        }
+    }
+
+    /// Entrega à janela `parent` as respostas dos alertas dela e a redesenha.
+    fn deliver_alerts(&mut self, parent: u32) {
+        let done: Vec<(u64, usize)> = self.alert_done.iter().filter(|d| d.0 == parent).map(|d| (d.1, d.2)).collect();
+        self.alert_done.retain(|d| d.0 != parent);
+        let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(0)), move |_, _, st: &mut Runner<A>| {
+            if st.focus_id(parent) {
+                st.w.mem.alert_results.extend(done.iter().copied());
+                st.w.mem.alert_open = false;
+                st.w.dirty = true;
+                st.draw_now();
+            }
+            TimeoutAction::Drop
+        });
+    }
+
+    /// Depois do quadro: abre a janela do alerta que o app pediu (ou a fecha, se ele
+    /// parou de pedir).
+    fn sync_alert_window(&mut self) {
+        if self.w.alert_of.is_some() {
+            return;
+        }
+        let pid = self.w.id;
+        let want = self.w.mem.alert_req.clone();
+        let open = self.others.iter().position(|o| o.alert_of.as_ref().is_some_and(|(p, _)| *p == pid));
+        match (want, open) {
+            (Some(req), None) => {
+                let opts = WindowOptions { title: req.title.clone(), app_id: self.w.app_id.clone(), size: (440, 150), fixed: true, min_size: None };
+                let id = 0x4000_0000 | pid;
+                let mut win = self.shells.open_with(&self.qh, id, &opts, true);
+                win.window.set_parent(Some(&self.w.window));
+                win.window.commit();
+                win.mem.app_icon = self.w.mem.app_icon;
+                win.alert_of = Some((pid, req));
+                self.w.mem.alert_open = true;
+                self.others.push(win);
+            }
+            (Some(req), Some(i)) => {
+                if self.others[i].alert_of.as_ref().is_some_and(|(_, r)| *r != req) {
+                    self.others[i].alert_of = Some((pid, req));
+                    self.others[i].dirty = true;
+                }
+                self.w.mem.alert_open = true;
+            }
+            (None, Some(i)) => {
+                drop(self.others.remove(i));
+                self.w.mem.alert_open = false;
+            }
+            (None, None) => {}
         }
     }
 
@@ -863,9 +939,20 @@ impl<A: App> Runner<A> {
                 canvas.start_record(false);
             }
             self.background(&mut canvas);
+            let alert = self.w.alert_of.clone();
             let (redraw, close) = {
                 let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-                self.app.ui(&mut ui);
+                match &alert {
+                    // Janela de alerta: o alerta ocupa a janela; a escolha volta para a dona.
+                    Some((parent, req)) => {
+                        let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
+                        if let Some(i) = ui.alert_window(req.kind, &req.title, &req.text, &b) {
+                            self.alert_done.push((*parent, req.key, i));
+                            ui.close = true;
+                        }
+                    }
+                    None => self.app.ui(&mut ui),
+                }
                 ui.finish()
             };
             // Um clique muda o estado no meio do quadro (ex.: o visor já foi
@@ -962,9 +1049,20 @@ impl<A: App> Runner<A> {
             canvas.set_region(None);
             canvas.start_record(true);
             self.background(&mut canvas);
+            let alert = self.w.alert_of.clone();
             let (redraw, close) = {
                 let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-                self.app.ui(&mut ui);
+                match &alert {
+                    // Janela de alerta: o alerta ocupa a janela; a escolha volta para a dona.
+                    Some((parent, req)) => {
+                        let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
+                        if let Some(i) = ui.alert_window(req.kind, &req.title, &req.text, &b) {
+                            self.alert_done.push((*parent, req.key, i));
+                            ui.close = true;
+                        }
+                    }
+                    None => self.app.ui(&mut ui),
+                }
                 ui.finish()
             };
             ops = canvas.take_record();
@@ -1219,6 +1317,7 @@ impl<A: App> Runner<A> {
     /// Devolve verdadeiro se o tamanho mudou na hora (o quadro precisa ser refeito).
     fn after_frame(&mut self) -> bool {
         let mut resized = false;
+        self.sync_alert_window();
         for fd in std::mem::take(&mut self.w.mem.watch_req) {
             // Segurança: o app garante que o descritor vive enquanto observado.
             let src = Generic::new(unsafe { smithay_client_toolkit::reexports::calloop::generic::FdWrapper::new(fd) }, Interest::READ, Mode::Level);
@@ -1904,6 +2003,13 @@ impl<A: App> OutputHandler for Runner<A> {
 impl<A: App> WindowHandler for Runner<A> {
     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, window: &Window) {
         if !self.focus_surface(window.wl_surface()) {
+            return;
+        }
+        // Fechar a janela do alerta = Cancelar (ou o primeiro botão).
+        if let Some((parent, req)) = self.w.alert_of.clone() {
+            let i = req.buttons.iter().position(|b| b.eq_ignore_ascii_case("Cancelar") || b.eq_ignore_ascii_case(crate::tr!("Cancelar"))).unwrap_or(0);
+            self.alert_done.push((parent, req.key, i));
+            self.close_current();
             return;
         }
         if self.app.close_window(self.w.id) {
