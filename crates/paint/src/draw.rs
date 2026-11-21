@@ -1380,6 +1380,70 @@ impl Canvas {
         self.blit_canvas(other, ox, oy);
     }
 
+    /// Copia uma imagem opaca (sem misturar com o fundo) com o canto em (x, y). `key`
+    /// muda quando a imagem muda (no lugar de conferir os bytes: imagens grandes,
+    /// como a página de um navegador, a cada quadro).
+    pub fn draw_opaque_keyed(&mut self, other: &Canvas, x: f32, y: f32, key: u64) {
+        let s = self.scale;
+        let (ox, oy) = ((x * s).round() as i32, (y * s).round() as i32);
+        let (sw, sh) = (other.px_width() as i32, other.px_height() as i32);
+        if self.rec.is_some() {
+            let mut k = Fp::new(16);
+            k.rect([ox, oy, sw, sh]);
+            k.u(key);
+            if self.note([ox, oy, ox + sw, oy + sh], k.finish()) {
+                return;
+            }
+        }
+        let [bx0, by0, bx1, by1] = self.bounds();
+        let (x0, x1) = (ox.max(bx0), (ox + sw).min(bx1));
+        let (y0, y1) = (oy.max(by0), (oy + sh).min(by1));
+        if x0 >= x1 || y0 >= y1 {
+            return;
+        }
+        let n = (x1 - x0) as usize * 4;
+        let src = other.data();
+        for yy in y0..y1 {
+            let si = ((yy - oy) as usize * sw as usize + (x0 - ox) as usize) * 4;
+            let di = self.idx(x0, yy);
+            self.pm.data_mut()[di..di + n].copy_from_slice(&src[si..si + n]);
+        }
+    }
+
+    /// Como `draw_opaque_keyed`, só as linhas de pixel `rows` (início, fim) da imagem:
+    /// imagens grandes em faixas, cada uma com a sua chave (só as que mudaram são
+    /// recopiadas e mandadas de novo para a tela).
+    pub fn draw_opaque_rows(&mut self, other: &Canvas, x: f32, y: f32, rows: (i32, i32), key: u64) {
+        let s = self.scale;
+        let (ox, oy) = ((x * s).round() as i32, (y * s).round() as i32);
+        let (sw, sh) = (other.px_width() as i32, other.px_height() as i32);
+        let (r0, r1) = (rows.0.clamp(0, sh), rows.1.clamp(0, sh));
+        if r0 >= r1 {
+            return;
+        }
+        if self.rec.is_some() {
+            let mut k = Fp::new(17);
+            k.rect([ox, oy + r0, sw, r1 - r0]);
+            k.u(key);
+            if self.note([ox, oy + r0, ox + sw, oy + r1], k.finish()) {
+                return;
+            }
+        }
+        let [bx0, by0, bx1, by1] = self.bounds();
+        let (x0, x1) = (ox.max(bx0), (ox + sw).min(bx1));
+        let (y0, y1) = ((oy + r0).max(by0), (oy + r1).min(by1));
+        if x0 >= x1 || y0 >= y1 {
+            return;
+        }
+        let n = (x1 - x0) as usize * 4;
+        let src = other.data();
+        for yy in y0..y1 {
+            let si = ((yy - oy) as usize * sw as usize + (x0 - ox) as usize) * 4;
+            let di = self.idx(x0, yy);
+            self.pm.data_mut()[di..di + n].copy_from_slice(&src[si..si + n]);
+        }
+    }
+
     /// Compõe outro canvas com o canto em (ox, oy), em pixels (sem anotar).
     fn blit_canvas(&mut self, other: &Canvas, ox: i32, oy: i32) {
         let (sw, sh) = (other.px_width() as i32, other.px_height() as i32);

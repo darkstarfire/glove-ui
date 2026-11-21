@@ -314,17 +314,27 @@ pub struct Input {
     pub mods: Mods,
     /// Botão direito pressionado neste quadro (não conta como clique comum).
     pub right_pressed: bool,
+    /// A janela está em zoom (maximizada pelo Glove).
+    pub maximized: bool,
+    /// Botão do meio pressionado / solto neste quadro.
+    pub middle_pressed: bool,
+    pub middle_released: bool,
+    /// Rolagem para os lados neste quadro (positivo = para a direita).
+    pub scroll_x: f32,
 }
 
 impl Input {
     /// Houve clique ou tecla neste quadro?
     pub fn has_events(&self) -> bool {
-        self.pressed || self.released || self.right_pressed || self.scroll != 0.0 || !self.keys.is_empty() || !self.text.is_empty() || !self.menu_actions.is_empty()
+        self.pressed || self.released || self.right_pressed || self.middle_pressed || self.middle_released || self.scroll != 0.0 || self.scroll_x != 0.0 || !self.keys.is_empty() || !self.text.is_empty() || !self.menu_actions.is_empty()
     }
 
     pub fn end_frame(&mut self) {
         self.pressed = false;
         self.right_pressed = false;
+        self.middle_pressed = false;
+        self.middle_released = false;
+        self.scroll_x = 0.0;
         self.released = false;
         self.scroll = 0.0;
         self.moved = false;
@@ -493,6 +503,10 @@ pub struct Memory {
     pub(crate) edited_sent: Option<bool>,
     pub(crate) doc_sent: Option<Option<std::path::PathBuf>>,
     pub(crate) minimize_req: bool,
+    /// Pedido de zoom (ou de voltar do zoom): moldura própria.
+    pub(crate) zoom_req: bool,
+    /// Os botões da janela (moldura própria): o apertado.
+    pub(crate) title_pressed: Option<glove_paint::chrome::TitleButton>,
     /// Novo tamanho da janela pedido pelo app: (largura, altura, animar).
     pub(crate) size_req: Option<(u32, u32, bool)>,
     /// Novo tamanho mínimo da janela pedido pelo app: (largura, altura, animar).
@@ -546,6 +560,7 @@ impl Memory {
         self.resize_req = false;
         self.glove_cmds.clear();
         self.minimize_req = false;
+        self.zoom_req = false;
         self.size_req = None;
         self.min_req = None;
         self.wake_after = None;
@@ -837,6 +852,71 @@ impl<'a> Ui<'a> {
 
     pub fn minimize(&mut self) {
         self.mem.minimize_req = true;
+    }
+
+    /// Zoom (ou volta do zoom), como o botão verde da barra de título.
+    pub fn toggle_zoom(&mut self) {
+        self.mem.zoom_req = true;
+    }
+
+    /// A janela está em zoom?
+    pub fn maximized(&self) -> bool {
+        self.input.maximized
+    }
+
+    /// Os três botões da janela (fechar, minimizar, zoom) desenhados pelo app, no
+    /// estilo da barra de título do tema, com o primeiro centrado em (x + 14, cy).
+    /// Para janelas com moldura própria (`use_own_frame_main`): minimizar e zoom já
+    /// valem; devolve verdadeiro quando o fechar é clicado (o app decide e põe
+    /// `ui.close = true`). Ocupa 68 pontos de largura.
+    pub fn window_buttons(&mut self, x: f32, cy: f32) -> bool {
+        use glove_paint::chrome::{self, TitleBarState, TitleButton};
+        let group = Rect::new(x + 4.0, cy - 10.0, 62.0, 20.0);
+        let (px, py) = self.input.pos;
+        let over = self.input.inside && group.contains((px, py));
+        let at = if over { chrome::title_button_at(px - x, py - cy + glove_paint::theme::TITLE_H as f32 / 2.0) } else { None };
+        // Os botões não deixam a área ser "da barra" (arrastar) neste quadro.
+        if over {
+            self.hit(group);
+        }
+        if self.input.pressed && at.is_some() {
+            self.mem.title_pressed = at;
+        }
+        let pressed = self.mem.title_pressed.filter(|b| Some(*b) == at && self.input.down);
+        let mut close = false;
+        if self.input.released {
+            if let Some(b) = self.mem.title_pressed.take().filter(|b| Some(*b) == at) {
+                match b {
+                    TitleButton::Close => close = true,
+                    TitleButton::Minimize => self.mem.minimize_req = true,
+                    TitleButton::Zoom => self.mem.zoom_req = self.resizable,
+                }
+            }
+        }
+        let st = TitleBarState { active: self.input.active, hover: over, pressed, zoom_enabled: self.resizable, edited: self.mem.edited_sent == Some(true), pill: false };
+        chrome::title_buttons(self.c, self.theme, x, cy, &st);
+        if over || self.mem.title_pressed.is_some() {
+            self.redraw = true;
+        }
+        close
+    }
+
+    /// Arrastar pela área livre da barra de ferramentas (moldura própria): apertar e
+    /// mover arrasta a janela; dois cliques dão o zoom. Chame depois dos controles da
+    /// barra (o que um controle já pegou não arrasta).
+    pub fn toolbar_drag(&mut self, r: Rect) {
+        // Um controle da barra já pegou o clique.
+        if self.input.pressed && self.mem.active.is_some() {
+            return;
+        }
+        let h = self.hit(r);
+        if h.pressed {
+            if h.double {
+                self.mem.zoom_req = self.resizable;
+            } else {
+                self.mem.move_req = true;
+            }
+        }
     }
 
     /// Menu de contexto solto: o Glove o desenha no ponto `at` da janela (em pontos), por
@@ -1166,6 +1246,25 @@ impl<'a> Ui<'a> {
     /// O botão do mouse foi pressionado neste quadro (em qualquer lugar da janela).
     pub fn mouse_pressed(&self) -> bool {
         self.input.pressed
+    }
+
+    /// Botão do meio pressionado (`true`) ou solto (`false`) dentro de `r` neste quadro.
+    pub fn middle_button(&self, r: Rect) -> Option<bool> {
+        if self.blocked() || !r.contains(self.pos()) {
+            return None;
+        }
+        if self.input.middle_pressed {
+            Some(true)
+        } else if self.input.middle_released {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    /// Rolagem para os lados sobre `r` neste quadro (positivo = para a direita).
+    pub fn scroll_x_in(&self, r: Rect) -> f32 {
+        if self.hovered(r) { self.input.scroll_x } else { 0.0 }
     }
 
     /// Botão direito pressionado dentro de `r` neste quadro (menus de contexto).

@@ -65,6 +65,11 @@ pub trait App: 'static {
     }
     /// Chamado a cada batida do timer de `tick`, antes de redesenhar.
     fn on_tick(&mut self) {}
+    /// Depois de `on_tick`: as janelas precisam ser redesenhadas? (Padrão: sim.) Apps
+    /// com batida rápida (navegador) evitam refazer a janela quando nada mudou.
+    fn tick_redraw(&mut self) -> bool {
+        true
+    }
     /// O usuário pediu para fechar a janela. Devolva `false` para impedir
     /// (ex.: perguntar se quer salvar) e feche depois com `ui.close = true`.
     fn close_requested(&mut self) -> bool {
@@ -243,6 +248,16 @@ pub fn use_own_frame() {
     OWN_FRAME.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Só a primeira janela (número 0) sem a barra de título do Glove: o app põe os botões
+/// da janela na barra de ferramentas (`Ui::window_buttons`) e arrasta por ela
+/// (`Ui::toolbar_drag`). As outras janelas (Preferências etc.) seguem com a barra.
+static OWN_FRAME_MAIN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Chame antes de `run`: a janela principal desenha a própria moldura.
+pub fn use_own_frame_main() {
+    OWN_FRAME_MAIN.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// O que é preciso para abrir janelas novas depois da primeira.
 struct Shells {
     compositor: CompositorState,
@@ -263,7 +278,8 @@ impl Shells {
             (Some(m), Some(v)) => (Some(v.get_viewport(&surface, qh, NoEvents)), Some(m.get_fractional_scale(&surface, qh, FracData))),
             _ => (None, None),
         };
-        let deco = if bare || OWN_FRAME.load(std::sync::atomic::Ordering::Relaxed) { WindowDecorations::RequestClient } else { WindowDecorations::RequestServer };
+        let own = OWN_FRAME.load(std::sync::atomic::Ordering::Relaxed) || (id == 0 && OWN_FRAME_MAIN.load(std::sync::atomic::Ordering::Relaxed));
+        let deco = if bare || own { WindowDecorations::RequestClient } else { WindowDecorations::RequestServer };
         let window = self.xdg.create_window(surface, deco, qh);
         window.set_title(opts.title.clone());
         window.set_app_id(opts.app_id.clone());
@@ -595,7 +611,9 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
             .handle()
             .insert_source(Timer::from_duration(first), move |_, _, st: &mut Runner<A>| {
                 st.app.on_tick();
-                st.redraw_all();
+                if st.app.tick_redraw() {
+                    st.redraw_all();
+                }
                 match st.app.tick() {
                     Some(d) => TimeoutAction::ToDuration(d),
                     None => {
@@ -890,7 +908,9 @@ impl<A: App> Runner<A> {
         let flag = self.tick_active.clone();
         let _ = self.loop_handle.insert_source(Timer::from_duration(first), move |_, _, st: &mut Runner<A>| {
             st.app.on_tick();
-            st.redraw_all();
+            if st.app.tick_redraw() {
+                st.redraw_all();
+            }
             match st.app.tick() {
                 Some(d) => TimeoutAction::ToDuration(d),
                 None => {
@@ -1448,6 +1468,13 @@ impl<A: App> Runner<A> {
         }
         if std::mem::take(&mut self.w.mem.minimize_req) {
             self.w.window.set_minimized();
+        }
+        if std::mem::take(&mut self.w.mem.zoom_req) {
+            if self.w.input.maximized {
+                self.w.window.unset_maximized();
+            } else {
+                self.w.window.set_maximized();
+            }
         }
         if let Some(t) = self.w.mem.title.take() {
             self.w.window.set_title(t);
@@ -2053,6 +2080,7 @@ impl<A: App> WindowHandler for Runner<A> {
         if !self.focus_surface(window.wl_surface()) {
             return;
         }
+        self.w.input.maximized = cfg.is_maximized();
         if !self.w.fixed {
             let resizing = cfg.is_resizing();
             if resizing && !self.w.resizing {
@@ -2269,6 +2297,12 @@ impl<A: App> PointerHandler for Runner<A> {
                     self.w.input.right_pressed = true;
                 }
                 PointerEventKind::Release { button: 0x111, .. } => {}
+                // Botão do meio: à parte (links em aba nova, colar), não é um clique comum.
+                PointerEventKind::Press { button: 0x112, serial, .. } => {
+                    self.last_serial = serial;
+                    self.w.input.middle_pressed = true;
+                }
+                PointerEventKind::Release { button: 0x112, .. } => self.w.input.middle_released = true,
                 PointerEventKind::Press { serial, time, .. } => {
                     self.last_serial = serial;
                     self.press_serial = serial;
@@ -2285,7 +2319,10 @@ impl<A: App> PointerHandler for Runner<A> {
                     self.w.input.down = false;
                     self.w.input.released = true;
                 }
-                PointerEventKind::Axis { vertical, .. } => self.w.input.scroll += vertical.absolute as f32,
+                PointerEventKind::Axis { vertical, horizontal, .. } => {
+                    self.w.input.scroll += vertical.absolute as f32;
+                    self.w.input.scroll_x += horizontal.absolute as f32;
+                }
             }
         }
         for id in touched {

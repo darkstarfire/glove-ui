@@ -879,6 +879,44 @@ pub fn logo(pm: &mut Canvas, x: f32, y: f32, s: f32, _accent: tiny_skia::Color) 
     pm.draw_pixmap_t(img.as_ref(), &paint, t);
 }
 
+/// A logo chapada numa cor só, opaca (a silhueta da luva): preta no Moderno Claro e
+/// branca no Moderno Escuro, como as marcas monocromáticas das barras de hoje. Os
+/// contornos do desenho ficam vazados (os dedos e o punho continuam legíveis).
+pub fn logo_solid(pm: &mut Canvas, x: f32, y: f32, s: f32, color: tiny_skia::Color) {
+    let px = s * pm.scale;
+    let mips = logo_mips();
+    let Some(img) = mips.iter().rev().find(|m| m.width() as f32 >= px).or(mips.first()) else { return };
+    let Some(mut sil) = tiny_skia::Pixmap::new(img.width(), img.height()) else { return };
+    let c = color.premultiply().to_color_u8();
+    for (d, sp) in sil.pixels_mut().iter_mut().zip(img.pixels()) {
+        // A forma: só o que é da luva (a sombra suave em volta fica de fora).
+        let a0 = sp.alpha() as f32 / 255.0;
+        let forma = ((a0 - 0.3) / 0.2).clamp(0.0, 1.0);
+        // Os contornos escuros do desenho (entre os dedos, o punho) viram vãos: sem
+        // eles, a luva chapada seria um borrão.
+        let q = sp.demultiply();
+        let lum = 0.299 * q.red() as f32 + 0.587 * q.green() as f32 + 0.114 * q.blue() as f32;
+        let a = forma * ((lum - 60.0) / 50.0).clamp(0.0, 1.0);
+        if let Some(p) = tiny_skia::PremultipliedColorU8::from_rgba((c.red() as f32 * a) as u8, (c.green() as f32 * a) as u8, (c.blue() as f32 * a) as u8, (c.alpha() as f32 * a) as u8) {
+            *d = p;
+        }
+    }
+    let k = px / img.width() as f32;
+    let t = tiny_skia::Transform::from_row(k, 0.0, 0.0, k, (x * pm.scale).round(), (y * pm.scale).round());
+    let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
+    pm.draw_pixmap_t(sil.as_ref(), &paint, t);
+}
+
+/// A logo no tema: gel nos clássicos, chapada (preta ou branca) nos modernos.
+pub fn logo_for(pm: &mut Canvas, theme: &crate::theme::Theme, x: f32, y: f32, s: f32) {
+    if theme.modern {
+        let c = if theme.dark { tiny_skia::Color::WHITE } else { tiny_skia::Color::BLACK };
+        logo_solid(pm, x, y, s, c);
+    } else {
+        logo(pm, x, y, s, theme.accent);
+    }
+}
+
 /// A imagem da logo e as reduções dela (256, 128, 64… até 8 px).
 fn logo_mips() -> &'static [tiny_skia::Pixmap] {
     static MIPS: std::sync::OnceLock<Vec<tiny_skia::Pixmap>> = std::sync::OnceLock::new();

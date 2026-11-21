@@ -23,6 +23,9 @@ pub enum PrintContent {
 pub struct PrintSheet {
     /// Nome do documento (título do trabalho e do PDF salvo).
     pub name: String,
+    /// De onde a folha desce (pontos do topo da janela): embaixo da barra de
+    /// ferramentas nas janelas sem a barra de título do Glove (a Jangada).
+    pub top: f32,
     content: PrintContent,
     printers: Vec<String>,
     printer: usize,
@@ -50,7 +53,7 @@ fn printers() -> Vec<String> {
 
 impl PrintSheet {
     pub fn new(name: &str, content: PrintContent) -> Self {
-        Self { name: name.to_string(), content, printers: printers(), printer: 0, copies: "1".into(), all_pages: true, from: "1".into(), to: "1".into(), save: None, message: None, first: true }
+        Self { name: name.to_string(), top: 0.0, content, printers: printers(), printer: 0, copies: "1".into(), all_pages: true, from: "1".into(), to: "1".into(), save: None, message: None, first: true }
     }
 
     fn pdf(&self) -> Result<Vec<u8>, String> {
@@ -115,12 +118,13 @@ impl Ui<'_> {
         let (w, h) = (self.c.w, self.c.h);
         let ink = rgba(20, 20, 20, 255);
         let sw = (w - 24.0).clamp(300.0, 540.0);
-        let sh = 214.0f32.min(h - 8.0);
+        let top = p.top.clamp(0.0, (h - 60.0).max(0.0));
+        let sh = 214.0f32.min(h - 8.0 - top);
         let sx = ((w - sw) / 2.0).round();
-        self.c.fill_rect(0.0, 0.0, w, h, &solid(rgba(0, 0, 0, 40)));
-        let shape = || rrect4(sx, 0.0, sw, sh, [0.0, 0.0, 6.0, 6.0]);
+        self.c.fill_rect(0.0, top, w, h - top, &solid(rgba(0, 0, 0, 40)));
+        let shape = || rrect4(sx, top, sw, sh, [0.0, 0.0, 6.0, 6.0]);
         self.c.fill(shape(), &solid(self.theme.body_b));
-        self.c.pinstripes(sx, 0.0, sw, sh - 6.0, self.theme.body_a, self.theme.body_b);
+        self.c.pinstripes(sx, top, sw, sh - 6.0, self.theme.body_a, self.theme.body_b);
         self.c.stroke(shape(), &solid(rgba(0, 0, 0, 90)), 1.0 / self.c.scale);
         let lw = 100.0;
         let label = |ui: &mut Ui, t: &str, y: f32| {
@@ -128,7 +132,7 @@ impl Ui<'_> {
             ui.fonts.draw(ui.c, t, sx + lw - tw, y + 15.0, 13.0, false, ink);
         };
         // Impressora
-        let mut y = 18.0;
+        let mut y = top + 18.0;
         label(self, tr!("Impressora:"), y);
         let names: Vec<String> = if p.printers.is_empty() { vec![tr!("Nenhuma impressora").into()] } else { p.printers.clone() };
         let mut add_printer = false;
@@ -173,11 +177,11 @@ impl Ui<'_> {
         }
         if let Some(m) = &p.message {
             let m = self.fonts.ellipsize(m, 11.0, false, sw - 36.0);
-            self.fonts.draw(self.c, &m, sx + 18.0, sh - 50.0, 11.0, false, rgba(170, 30, 30, 255));
+            self.fonts.draw(self.c, &m, sx + 18.0, top + sh - 50.0, 11.0, false, rgba(170, 30, 30, 255));
         }
         // Botões: PDF à esquerda; Cancelar e Imprimir à direita.
         let mut done = false;
-        let by = sh - 38.0;
+        let by = top + sh - 38.0;
         let (mut save_pdf, mut preview, mut cancel, mut go) = (false, false, false, false);
         self.area(Rect::new(sx + 16.0, by, sw - 230.0, 24.0), |ui| {
             ui.horizontal(|ui| {

@@ -164,6 +164,20 @@ pub fn dark() -> bool {
     STYLE.load(std::sync::atomic::Ordering::Relaxed) & 2 != 0
 }
 
+static SYSTEM_SCREENS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// "Usar a aparência em todo o sistema" (Preferências ▸ Aparência): as telas do sistema
+/// (abertura da sessão, bloqueio, saída) seguem o tema moderno. Chamado pelo Glove ao
+/// ler a configuração.
+pub fn set_system_screens(on: bool) {
+    SYSTEM_SCREENS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// As telas do sistema no tema `t`: moderno (claro ou escuro) só com a opção ligada.
+pub fn system_modern(t: &Theme) -> bool {
+    t.modern && SYSTEM_SCREENS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub const TITLE_H: i32 = 22;
 pub const MENUBAR_H: i32 = 22;
 

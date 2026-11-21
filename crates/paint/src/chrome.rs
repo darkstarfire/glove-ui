@@ -68,6 +68,74 @@ pub fn title_layout(fonts: &Fonts, w: f32, title: &str, doc: bool) -> (Option<f3
     if doc { (Some(x), x + icon, t) } else { (None, x, t) }
 }
 
+/// Os três botões da janela (fechar, minimizar, zoom) com o primeiro centrado em
+/// (x0 + 14, cy): na barra de título do Glove e nas janelas que desenham a própria
+/// moldura (a barra de ferramentas da Jangada, por exemplo).
+pub fn title_buttons(c: &mut Canvas, theme: &Theme, x0: f32, cy: f32, st: &TitleBarState) {
+    for (b, bx) in BUTTONS {
+        let cx = x0 + bx;
+        let mut base = if st.active {
+            match b {
+                TitleButton::Close => theme.close,
+                TitleButton::Minimize => theme.minimize,
+                TitleButton::Zoom => theme.zoom,
+            }
+        } else {
+            theme.inactive_button
+        };
+        if st.pressed == Some(b) {
+            base = darken(base, 0.3);
+        }
+        let enabled = b != TitleButton::Zoom || st.zoom_enabled;
+        if !st.active && theme.variant == Variant::Listras {
+            // Inativa no 10.2: só o contorno do botão, com um brilho por dentro.
+            c.fill(circle(cx, cy, BUTTON_R), &vgrad(cy - BUTTON_R, cy + BUTTON_R, &[(0.0, rgba(255, 255, 255, 120)), (1.0, rgba(225, 225, 228, 120))]));
+            c.stroke(circle(cx, cy, BUTTON_R - 0.5), &solid(rgba(168, 168, 168, 255)), 1.0);
+            c.fill(oval(cx - BUTTON_R * 0.55, cy - BUTTON_R * 0.85, BUTTON_R * 1.1, BUTTON_R * 0.7), &solid(rgba(255, 255, 255, 170)));
+            continue;
+        }
+        if theme.modern {
+            // Moderno: bolinhas planas com um contorno fino, sem brilho.
+            let r = BUTTON_R - 0.5;
+            let fill = if enabled { base } else { with_alpha(base, 0.45) };
+            c.fill(circle(cx, cy, r), &solid(fill));
+            c.stroke(circle(cx, cy, r - 0.25), &solid(with_alpha(darken(base, 0.35), if theme.dark { 0.5 } else { 0.35 })), 0.75);
+            if !enabled {
+                continue;
+            }
+        } else if !enabled {
+            // Indisponível: o mesmo gel, desbotado.
+            gel_circle(c, cx, cy, BUTTON_R, with_alpha(lighten(base, 0.35), 0.4));
+            continue;
+        } else {
+            gel_circle(c, cx, cy, BUTTON_R, base);
+        }
+        // Alterações não salvas: o ponto escuro no meio do botão vermelho.
+        if b == TitleButton::Close && st.edited && !st.hover {
+            c.fill(circle(cx, cy, 2.3), &solid(with_alpha(darken(base, 0.65), 0.9)));
+        }
+        if st.hover {
+            let ink = solid(with_alpha(darken(base, 0.7), 0.85));
+            let (l, lw) = (2.6, 1.4);
+            match b {
+                TitleButton::Close => {
+                    let mut pb = tiny_skia::PathBuilder::new();
+                    pb.move_to(cx - l, cy - l);
+                    pb.line_to(cx + l, cy + l);
+                    pb.move_to(cx + l, cy - l);
+                    pb.line_to(cx - l, cy + l);
+                    c.stroke(pb.finish(), &ink, lw);
+                }
+                TitleButton::Minimize => c.fill_rect(cx - l - 0.5, cy - lw / 2.0, 2.0 * l + 1.0, lw, &ink),
+                TitleButton::Zoom => {
+                    c.fill_rect(cx - l - 0.5, cy - lw / 2.0, 2.0 * l + 1.0, lw, &ink);
+                    c.fill_rect(cx - lw / 2.0, cy - l - 0.5, lw, 2.0 * l + 1.0, &ink);
+                }
+            }
+        }
+    }
+}
+
 pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBarState, doc_icon: Option<Icon>, scale: f32) -> Option<Canvas> {
     let h = TITLE_H as f32;
     let mut c = Canvas::new(w, h, scale)?;
@@ -138,67 +206,7 @@ pub fn titlebar(fonts: &Fonts, theme: &Theme, w: f32, title: &str, st: &TitleBar
     c.clip_top_corners(if theme.modern { 10.0 } else { 6.0 });
 
     let cy = h / 2.0;
-    for (b, cx) in BUTTONS {
-        let mut base = if st.active {
-            match b {
-                TitleButton::Close => theme.close,
-                TitleButton::Minimize => theme.minimize,
-                TitleButton::Zoom => theme.zoom,
-            }
-        } else {
-            theme.inactive_button
-        };
-        if st.pressed == Some(b) {
-            base = darken(base, 0.3);
-        }
-        let enabled = b != TitleButton::Zoom || st.zoom_enabled;
-        if !st.active && theme.variant == Variant::Listras {
-            // Inativa no 10.2: só o contorno do botão, com um brilho por dentro.
-            c.fill(circle(cx, cy, BUTTON_R), &vgrad(cy - BUTTON_R, cy + BUTTON_R, &[(0.0, rgba(255, 255, 255, 120)), (1.0, rgba(225, 225, 228, 120))]));
-            c.stroke(circle(cx, cy, BUTTON_R - 0.5), &solid(rgba(168, 168, 168, 255)), 1.0);
-            c.fill(oval(cx - BUTTON_R * 0.55, cy - BUTTON_R * 0.85, BUTTON_R * 1.1, BUTTON_R * 0.7), &solid(rgba(255, 255, 255, 170)));
-            continue;
-        }
-        if theme.modern {
-            // Moderno: bolinhas planas com um contorno fino, sem brilho.
-            let r = BUTTON_R - 0.5;
-            let fill = if enabled { base } else { with_alpha(base, 0.45) };
-            c.fill(circle(cx, cy, r), &solid(fill));
-            c.stroke(circle(cx, cy, r - 0.25), &solid(with_alpha(darken(base, 0.35), if theme.dark { 0.5 } else { 0.35 })), 0.75);
-            if !enabled {
-                continue;
-            }
-        } else if !enabled {
-            // Indisponível: o mesmo gel, desbotado.
-            gel_circle(&mut c, cx, cy, BUTTON_R, with_alpha(lighten(base, 0.35), 0.4));
-            continue;
-        } else {
-            gel_circle(&mut c, cx, cy, BUTTON_R, base);
-        }
-        // Alterações não salvas: o ponto escuro no meio do botão vermelho.
-        if b == TitleButton::Close && st.edited && !st.hover {
-            c.fill(circle(cx, cy, 2.3), &solid(with_alpha(darken(base, 0.65), 0.9)));
-        }
-        if st.hover {
-            let ink = solid(with_alpha(darken(base, 0.7), 0.85));
-            let (l, lw) = (2.6, 1.4);
-            match b {
-                TitleButton::Close => {
-                    let mut pb = tiny_skia::PathBuilder::new();
-                    pb.move_to(cx - l, cy - l);
-                    pb.line_to(cx + l, cy + l);
-                    pb.move_to(cx + l, cy - l);
-                    pb.line_to(cx - l, cy + l);
-                    c.stroke(pb.finish(), &ink, lw);
-                }
-                TitleButton::Minimize => c.fill_rect(cx - l - 0.5, cy - lw / 2.0, 2.0 * l + 1.0, lw, &ink),
-                TitleButton::Zoom => {
-                    c.fill_rect(cx - l - 0.5, cy - lw / 2.0, 2.0 * l + 1.0, lw, &ink);
-                    c.fill_rect(cx - lw / 2.0, cy - l - 0.5, lw, 2.0 * l + 1.0, &ink);
-                }
-            }
-        }
-    }
+    title_buttons(&mut c, theme, 0.0, cy, st);
 
     let px = 13.0;
     if w - 2.0 * 72.0 > 20.0 {
@@ -316,8 +324,13 @@ pub fn menubar(fonts: &Fonts, theme: &Theme, w: f32, titles: &[String], extras: 
     if open == Some(0) {
         hot(&mut c, logo.0, logo.1);
     }
-    let logo_color = if modern { theme.menu_text } else if open == Some(0) { lighten(theme.accent, 0.5) } else { theme.accent };
-    icons::logo(&mut c, 11.0, 2.0, 18.0, logo_color);
+    // Moderno: a luva chapada, preta (claro) ou branca (escuro); clássico: o gel.
+    if modern {
+        let cor = if theme.dark { Color::WHITE } else { Color::BLACK };
+        icons::logo_solid(&mut c, 11.0, 2.0, 18.0, cor);
+    } else {
+        icons::logo(&mut c, 11.0, 2.0, 18.0, theme.accent);
+    }
 
     let mut x = 40.0;
     let mut ranges = Vec::with_capacity(titles.len());
@@ -1409,23 +1422,37 @@ pub fn ending_spinner_center(w: f32, h: f32) -> (f32, f32) {
 
 /// Fundo cinza-claro de inicialização, com a logo e o texto (sem o giratório,
 /// que é uma peça separada para não redesenhar a tela inteira a cada passo).
+/// Com "a aparência em todo o sistema" no Moderno: fundo liso (claro ou grafite) e a
+/// luva chapada (preta ou branca), como a abertura dos sistemas de hoje.
 pub fn ending_screen(fonts: &Fonts, theme: &Theme, w: f32, h: f32, label: &str, scale: f32) -> Option<Canvas> {
     let mut c = Canvas::new(w, h, scale)?;
-    c.fill_rect(0.0, 0.0, w, h, &vgrad(0.0, h, &[(0.0, rgba(214, 216, 219, 255)), (1.0, rgba(188, 191, 196, 255))]));
+    let modern = crate::theme::system_modern(theme);
+    let (top, bot, ink) = match (modern, theme.dark) {
+        (true, true) => (rgba(30, 30, 33, 255), rgba(22, 22, 25, 255), rgba(214, 214, 220, 255)),
+        (true, false) => (rgba(242, 242, 244, 255), rgba(230, 230, 234, 255), rgba(60, 60, 66, 255)),
+        _ => (rgba(214, 216, 219, 255), rgba(188, 191, 196, 255), rgba(60, 62, 66, 255)),
+    };
+    c.fill_rect(0.0, 0.0, w, h, &vgrad(0.0, h, &[(0.0, top), (1.0, bot)]));
     let (cx, cy) = (w / 2.0, h / 2.0 - 30.0);
-    icons::logo(&mut c, cx - 52.0, cy - 52.0, 104.0, theme.accent);
+    if modern {
+        icons::logo_for(&mut c, theme, cx - 52.0, cy - 52.0, 104.0);
+    } else {
+        icons::logo(&mut c, cx - 52.0, cy - 52.0, 104.0, theme.accent);
+    }
     let px = 15.0;
     let tw = fonts.measure(label, px, false);
     let (_, sy) = ending_spinner_center(w, h);
-    fonts.draw(&mut c, label, (w - tw) / 2.0, sy + ENDING_SPINNER / 2.0 + 30.0, px, false, rgba(60, 62, 66, 255));
+    fonts.draw(&mut c, label, (w - tw) / 2.0, sy + ENDING_SPINNER / 2.0 + 30.0, px, false, ink);
     Some(c)
 }
 
-/// Giratório da tela de encerramento (`phase` de 0 a 1 = uma volta), sobre o fundo dela.
-pub fn ending_spinner(phase: f32, scale: f32) -> Option<Canvas> {
+/// Giratório da tela de encerramento (`phase` de 0 a 1 = uma volta), sobre o fundo dela
+/// (claro no fundo grafite do Moderno Escuro).
+pub fn ending_spinner(theme: &Theme, phase: f32, scale: f32) -> Option<Canvas> {
     let s = ENDING_SPINNER;
     let mut c = Canvas::new(s, s, scale)?;
-    spinner(&mut c, s / 2.0, s / 2.0, s / 2.0, phase, rgba(70, 72, 76, 255));
+    let cor = if crate::theme::system_modern(theme) && theme.dark { rgba(210, 210, 216, 255) } else { rgba(70, 72, 76, 255) };
+    spinner(&mut c, s / 2.0, s / 2.0, s / 2.0, phase, cor);
     Some(c)
 }
 
@@ -1691,14 +1718,14 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
 /// ou o destaque com o menu aberto). Pintá-las com uma cor fixa deixava o ícone um bloco
 /// branco no tema escuro.
 fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
-    // Dois interruptores vazados: só o contorno da pílula e a bolinha cheia (em cima à
-    // direita, embaixo à esquerda). Sem nenhuma parte cheia grande: no tema claro fica só
-    // o traço escuro, e no escuro o ícone não vira um bloco branco.
+    // Dois interruptores iguais, vazados: o contorno da pílula e a bolinha cheia (em cima
+    // à esquerda, embaixo à direita). Os dois com as mesmas cores; sem parte cheia grande
+    // (no tema escuro o ícone não vira um bloco branco).
     c.stroke(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(color), 1.2);
-    c.fill(circle(x + 12.4, y + 3.8, 2.2), &solid(color));
+    c.fill(circle(x + 3.8, y + 3.8, 2.0), &solid(color));
     let yy = y + 8.6;
     c.stroke(rrect(x + 0.6, yy, 15.0, 6.4, 3.2), &solid(color), 1.2);
-    c.fill(circle(x + 3.8, yy + 3.2, 2.2), &solid(color));
+    c.fill(circle(x + 12.4, yy + 3.2, 2.0), &solid(color));
 }
 
 /// Central de controle: o que ela mostra (None = o computador não tem).
@@ -2218,6 +2245,26 @@ pub fn user_picture(c: &mut Canvas, x: f32, y: f32, s: f32, accent: Color) {
     gel_circle(c, x + s / 2.0, y + s * 0.4, s * 0.2, body);
 }
 
+/// Retrato genérico no Moderno: um círculo cinza liso com a silhueta clara (cabeça e
+/// ombros), como nas telas de login de hoje.
+pub fn user_picture_modern(c: &mut Canvas, x: f32, y: f32, s: f32, dark: bool) {
+    let (cx, cy, r) = (x + s / 2.0, y + s / 2.0, s / 2.0);
+    let (fundo, figura) = if dark { (rgba(92, 92, 98, 255), rgba(200, 200, 206, 255)) } else { (rgba(168, 168, 176, 255), rgba(242, 242, 245, 255)) };
+    c.fill(circle(cx, cy, r), &solid(fundo));
+    c.fill(circle(cx, cy - r * 0.2, r * 0.36), &solid(figura));
+    // Ombros: uma elipse larga cortada pelo círculo.
+    let mut pb = tiny_skia::PathBuilder::new();
+    let n = 48;
+    for i in 0..=n {
+        let a = std::f32::consts::PI + i as f32 / n as f32 * std::f32::consts::PI;
+        let (px, py) = (cx + r * 0.66 * a.cos(), cy + r * 0.92 + r * 0.62 * a.sin());
+        if i == 0 { pb.move_to(px, py) } else { pb.line_to(px, py) }
+    }
+    pb.close();
+    // A figura não sai do círculo.
+    c.fill_clipped(pb.finish(), &solid(figura), circle(cx, cy, r - 0.5));
+}
+
 /// Painel de desbloqueio, com sombra. `dots`: quantos caracteres digitados;
 /// `message`: aviso em vermelho ("Senha incorreta.") ou None; `busy`: verificando.
 #[allow(clippy::too_many_arguments)]
@@ -2228,24 +2275,37 @@ pub fn lock_panel(fonts: &Fonts, theme: &Theme, name: &str, dots: usize, message
         c.draw_canvas(&sh, 0.0, 0.0);
     }
     let (x0, y0) = (m, m);
-    let shape = || rrect(x0, y0, w, h, 8.0);
+    // Moderno (com a aparência em todo o sistema): painel liso de cantos largos.
+    let modern = crate::theme::system_modern(theme);
+    let shape = || rrect(x0, y0, w, h, if modern { 12.0 } else { 8.0 });
     c.fill(shape(), &solid(theme.body_b));
-    // Listras longe dos cantos arredondados.
-    c.pinstripes(x0, y0 + 8.0, w, h - 16.0, theme.body_a, theme.body_b);
-    c.stroke(shape(), &solid(rgba(0, 0, 0, 90)), 1.0 / scale);
+    if !modern {
+        // Listras longe dos cantos arredondados.
+        c.pinstripes(x0, y0 + 8.0, w, h - 16.0, theme.body_a, theme.body_b);
+    }
+    c.stroke(shape(), &solid(if modern && theme.dark { rgba(255, 255, 255, 40) } else { rgba(0, 0, 0, 90) }), 1.0 / scale);
 
-    user_picture(&mut c, x0 + 20.0, y0 + 22.0, 76.0, theme.accent);
-    let ink = rgba(20, 20, 20, 255);
+    if modern {
+        user_picture_modern(&mut c, x0 + 20.0, y0 + 22.0, 76.0, theme.dark);
+    } else {
+        user_picture(&mut c, x0 + 20.0, y0 + 22.0, 76.0, theme.accent);
+    }
+    let (ink, dim) = if modern { (theme.text, theme.text_dim) } else { (rgba(20, 20, 20, 255), rgba(50, 50, 50, 255)) };
     fonts.draw(&mut c, name, x0 + 112.0, y0 + 40.0, 15.0, true, ink);
-    fonts.draw(&mut c, tr!("Esta tela está bloqueada."), x0 + 112.0, y0 + 62.0, 11.0, false, rgba(50, 50, 50, 255));
-    fonts.draw(&mut c, tr!("Digite sua senha para desbloquear."), x0 + 112.0, y0 + 78.0, 11.0, false, rgba(50, 50, 50, 255));
+    fonts.draw(&mut c, tr!("Esta tela está bloqueada."), x0 + 112.0, y0 + 62.0, 11.0, false, dim);
+    fonts.draw(&mut c, tr!("Digite sua senha para desbloquear."), x0 + 112.0, y0 + 78.0, 11.0, false, dim);
 
     // Campo de senha
     let (fx, fy, fw, fh) = LOCK_FIELD;
     let (fx, fy) = (x0 + fx, y0 + fy);
-    c.fill(rrect(fx, fy, fw, fh, 3.0), &solid(Color::WHITE));
-    c.stroke(rrect(fx + 0.5, fy + 0.5, fw - 1.0, fh - 1.0, 3.0), &solid(rgba(120, 120, 120, 255)), 1.0);
-    c.hline(fx + 1.0, fy + 1.5, fw - 2.0, rgba(0, 0, 0, 40));
+    if modern {
+        c.fill(rrect(fx, fy, fw, fh, 6.0), &solid(theme.control_bg));
+        c.stroke(rrect(fx + 0.5, fy + 0.5, fw - 1.0, fh - 1.0, 6.0), &solid(theme.control_border), 1.0);
+    } else {
+        c.fill(rrect(fx, fy, fw, fh, 3.0), &solid(Color::WHITE));
+        c.stroke(rrect(fx + 0.5, fy + 0.5, fw - 1.0, fh - 1.0, 3.0), &solid(rgba(120, 120, 120, 255)), 1.0);
+        c.hline(fx + 1.0, fy + 1.5, fw - 2.0, rgba(0, 0, 0, 40));
+    }
     let mut dx = fx + 10.0;
     for _ in 0..dots.min(28) {
         c.fill(circle(dx + 3.0, fy + fh / 2.0, 3.2), &solid(ink));
@@ -2264,10 +2324,16 @@ pub fn lock_panel(fonts: &Fonts, theme: &Theme, name: &str, dots: usize, message
 
     let (bx, by, bw, bh) = lock_button_rect();
     let base = if busy { rgba(225, 225, 228, 255) } else { theme.accent };
-    gel_rect(&mut c, x0 + bx, y0 + by, bw, bh, bh / 2.0, if pressed { darken(base, 0.2) } else { base });
     let label = tr!("Desbloquear");
     let tw = fonts.measure(label, 13.0, false);
-    fonts.draw(&mut c, label, x0 + bx + (bw - tw) / 2.0, y0 + by + 15.5, 13.0, false, if busy { rgba(140, 140, 140, 255) } else { ink });
+    if modern {
+        // Botão liso azul com o texto branco.
+        c.fill(rrect(x0 + bx, y0 + by, bw, bh, 6.0), &solid(if pressed { darken(base, 0.2) } else { base }));
+        fonts.draw(&mut c, label, x0 + bx + (bw - tw) / 2.0, y0 + by + 15.5, 13.0, false, if busy { rgba(140, 140, 140, 255) } else { Color::WHITE });
+    } else {
+        gel_rect(&mut c, x0 + bx, y0 + by, bw, bh, bh / 2.0, if pressed { darken(base, 0.2) } else { base });
+        fonts.draw(&mut c, label, x0 + bx + (bw - tw) / 2.0, y0 + by + 15.5, 13.0, false, if busy { rgba(140, 140, 140, 255) } else { ink });
+    }
     Some(c)
 }
 
@@ -2287,16 +2353,24 @@ pub fn startup_panel(fonts: &Fonts, theme: &Theme, status: &str, progress: f32, 
         c.draw_canvas(&sh, 0.0, 0.0);
     }
     let (x0, y0) = (m, m);
-    c.fill(rrect(x0, y0, w, h, 8.0), &solid(theme.body_b));
-    c.pinstripes(x0, y0 + 8.0, w, h - 16.0, theme.body_a, theme.body_b);
-    c.stroke(rrect(x0, y0, w, h, 8.0), &solid(rgba(0, 0, 0, 90)), 1.0 / scale);
-    icons::logo(&mut c, x0 + w / 2.0 - 32.0, y0 + 14.0, 64.0, theme.accent);
+    let modern = crate::theme::system_modern(theme);
+    let r = if modern { 12.0 } else { 8.0 };
+    c.fill(rrect(x0, y0, w, h, r), &solid(theme.body_b));
+    if modern {
+        c.stroke(rrect(x0, y0, w, h, r), &solid(if theme.dark { rgba(255, 255, 255, 40) } else { rgba(0, 0, 0, 60) }), 1.0 / scale);
+        icons::logo_for(&mut c, theme, x0 + w / 2.0 - 32.0, y0 + 14.0, 64.0);
+    } else {
+        c.pinstripes(x0, y0 + 8.0, w, h - 16.0, theme.body_a, theme.body_b);
+        c.stroke(rrect(x0, y0, w, h, r), &solid(rgba(0, 0, 0, 90)), 1.0 / scale);
+        icons::logo(&mut c, x0 + w / 2.0 - 32.0, y0 + 14.0, 64.0, theme.accent);
+    }
     let center = |c: &mut Canvas, t: &str, y: f32, px: f32, bold: bool, col: Color| {
         let tw = fonts.measure(t, px, bold);
         fonts.draw(c, t, x0 + (w - tw) / 2.0, y, px, bold, col);
     };
-    center(&mut c, "Glove", y0 + 104.0, 22.0, true, rgba(20, 20, 20, 255));
-    center(&mut c, status, y0 + 132.0, 11.0, false, rgba(50, 50, 50, 255));
+    let (ink, dim) = if modern { (theme.text, theme.text_dim) } else { (rgba(20, 20, 20, 255), rgba(50, 50, 50, 255)) };
+    center(&mut c, "Glove", y0 + 104.0, 22.0, true, ink);
+    center(&mut c, status, y0 + 132.0, 11.0, false, dim);
     progress_bar(&mut c, x0 + 40.0, y0 + 148.0, w - 80.0, 12.0, Some(progress.clamp(0.0, 1.0)), 0.0, theme.accent);
     Some(c)
 }
@@ -2818,11 +2892,11 @@ mod control_tests {
             (p.red(), p.green(), p.blue())
         };
         // O miolo das duas chaves (longe do contorno e das bolinhas) mostra o fundo.
-        assert_eq!(px(2.0 + 6.0, 2.0 + 3.8), (30, 30, 34));
-        assert_eq!(px(2.0 + 10.0, 2.0 + 8.6 + 3.2), (30, 30, 34));
-        // As bolinhas são cheias, da cor do traço: em cima à direita, embaixo à esquerda.
-        assert_ne!(px(2.0 + 12.4, 2.0 + 3.8), (30, 30, 34));
-        assert_ne!(px(2.0 + 3.8, 2.0 + 8.6 + 3.2), (30, 30, 34));
+        assert_eq!(px(2.0 + 10.0, 2.0 + 3.8), (30, 30, 34));
+        assert_eq!(px(2.0 + 6.0, 2.0 + 8.6 + 3.2), (30, 30, 34));
+        // As bolinhas são cheias, da cor do traço: em cima à esquerda, embaixo à direita.
+        assert_ne!(px(2.0 + 3.8, 2.0 + 3.8), (30, 30, 34));
+        assert_ne!(px(2.0 + 12.4, 2.0 + 8.6 + 3.2), (30, 30, 34));
     }
 
     /// A central com tudo (botões e os três trilhos) cabe na altura medida.

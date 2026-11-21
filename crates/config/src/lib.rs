@@ -308,6 +308,10 @@ pub struct Appearance {
     /// Dock, sem sombras e sem o botão padrão pulsando.
     #[serde(default)]
     pub reduce_effects: bool,
+    /// A aparência também nas telas do sistema: a abertura (do sistema e da sessão), a
+    /// tela de login, o bloqueio e a saída. Desligado, elas ficam no visual clássico.
+    #[serde(default)]
+    pub system_theme: bool,
 }
 
 static REDUCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -329,7 +333,7 @@ pub fn anim(d: std::time::Duration) -> std::time::Duration {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false }
+        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false, system_theme: false }
     }
 }
 
