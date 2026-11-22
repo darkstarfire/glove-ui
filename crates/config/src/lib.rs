@@ -262,6 +262,56 @@ pub const KEYBOARD_LAYOUTS: [(&str, &str, &str, &str); 10] = [
     ("it", "", "Italiano", "IT"),
 ];
 
+/// Um layout do catálogo do sistema (xkeyboard-config): (layout, variante, nome).
+pub type Catalogo = (String, String, String);
+
+/// O catálogo de layouts e variantes instalado (base.lst do xkeyboard-config), sem os que
+/// já estão na lista de sempre. Vazio se o sistema não tem o catálogo.
+pub fn catalogo_teclado() -> Vec<Catalogo> {
+    static C: std::sync::OnceLock<Vec<Catalogo>> = std::sync::OnceLock::new();
+    C.get_or_init(|| {
+        let Ok(t) = std::fs::read_to_string("/usr/share/X11/xkb/rules/base.lst") else { return Vec::new() };
+        let mut v = Vec::new();
+        let mut secao = "";
+        for l in t.lines() {
+            if let Some(s) = l.strip_prefix("! ") {
+                secao = s.trim();
+                continue;
+            }
+            let l = l.trim();
+            if l.is_empty() {
+                continue;
+            }
+            match secao {
+                "layout" => {
+                    if let Some((cod, nome)) = l.split_once(char::is_whitespace) {
+                        v.push((cod.to_string(), String::new(), nome.trim().to_string()));
+                    }
+                }
+                "variant" => {
+                    // "intl            us: English (US, intl., with dead keys)"
+                    let mut it = l.splitn(2, char::is_whitespace);
+                    let (Some(var), Some(resto)) = (it.next(), it.next()) else { continue };
+                    let Some((lay, nome)) = resto.trim().split_once(':') else { continue };
+                    v.push((lay.trim().to_string(), var.to_string(), nome.trim().to_string()));
+                }
+                _ => {}
+            }
+        }
+        v
+    })
+    .clone()
+}
+
+/// O nome de um layout pelo id ("us:intl"), no catálogo do sistema ou nos conhecidos.
+pub fn nome_layout(id: &str) -> String {
+    let (l, v) = split_layout(id);
+    if let Some(k) = KEYBOARD_LAYOUTS.iter().find(|k| k.0 == l && k.1 == v) {
+        return k.2.to_string();
+    }
+    catalogo_teclado().into_iter().find(|c| c.0 == l && c.1 == v).map(|c| c.2).unwrap_or_else(|| id.to_string())
+}
+
 /// "us:intl" → ("us", "intl").
 pub fn split_layout(id: &str) -> (&str, &str) {
     id.split_once(':').unwrap_or((id, ""))
@@ -477,6 +527,9 @@ pub struct Keyboard {
     pub variant: String,
     /// Layouts do Menu de Entrada ("br", "us:intl"…); a tecla de troca passa por eles.
     pub input_menu: Vec<String>,
+    /// Layouts acrescentados pelo catálogo do sistema ("Adicionar Layout…"), além dos de sempre.
+    #[serde(default)]
+    pub extra_layouts: Vec<String>,
     /// Menu de Entrada na barra de menu.
     pub show_input_menu: bool,
     /// Atraso antes de repetir, em ms.
@@ -487,7 +540,7 @@ pub struct Keyboard {
 
 impl Default for Keyboard {
     fn default() -> Self {
-        Self { layout: "br".into(), variant: String::new(), input_menu: vec!["br".into(), "us".into()], show_input_menu: false, repeat_delay: 300, repeat_rate: 30 }
+        Self { layout: "br".into(), variant: String::new(), input_menu: vec!["br".into(), "us".into()], extra_layouts: Vec::new(), show_input_menu: false, repeat_delay: 300, repeat_rate: 30 }
     }
 }
 

@@ -50,33 +50,17 @@ pub struct Ticks<'a> {
     pub snap: bool,
 }
 
-/// Trilho fino e afundado dos sliders.
+/// Trilho fino e afundado dos sliders (no moderno, liso e claro, sem o brilho).
 fn slider_track(c: &mut Canvas, t: Rect) {
+    if glove_paint::theme::modern() {
+        let dark = glove_paint::theme::dark();
+        c.fill(rrect(t.x, t.y, t.w, t.h, t.h / 2.0), &solid(if dark { rgba(255, 255, 255, 40) } else { rgba(0, 0, 0, 36) }));
+        return;
+    }
     c.fill(rrect(t.x, t.y, t.w, t.h, t.h / 2.0), &vgrad(t.y, t.y + t.h, &[(0.0, rgba(120, 120, 126, 255)), (1.0, rgba(190, 190, 196, 255))]));
     c.hline(t.x + 2.0, t.y + t.h, t.w - 4.0, rgba(255, 255, 255, 200));
 }
 
-/// Polegar em escudo apontando para baixo (15×18 pt), centrado em `cx`, topo em `y`.
-fn slider_thumb_down(c: &mut Canvas, cx: f32, y: f32, base: Color) {
-    let shape = |inset: f32| {
-        let (l, r, t) = (cx - 7.5 + inset, cx + 7.5 - inset, y + inset);
-        let (shoulder, tip) = (y + 11.0, y + 18.0 - inset * 1.4);
-        let mut pb = glove_paint::tiny_skia::PathBuilder::new();
-        pb.move_to(l + 2.5, t);
-        pb.line_to(r - 2.5, t);
-        pb.quad_to(r, t, r, t + 2.5);
-        pb.line_to(r, shoulder);
-        pb.line_to(cx, tip);
-        pb.line_to(l, shoulder);
-        pb.line_to(l, t + 2.5);
-        pb.quad_to(l, t, l + 2.5, t);
-        pb.close();
-        pb.finish()
-    };
-    c.fill(shape(0.0), &solid(darken(base, 0.45)));
-    c.fill(shape(1.0), &vgrad(y, y + 18.0, &[(0.0, darken(base, 0.04)), (0.5, base), (1.0, lighten(base, 0.5))]));
-    c.fill_clipped(rrect(cx - 7.5, y, 15.0, 7.0, 0.0), &vgrad(y + 1.0, y + 7.0, &[(0.0, rgba(255, 255, 255, 220)), (1.0, rgba(255, 255, 255, 50))]), shape(1.5));
-}
 
 /// Conteúdo de uma parte do segmentado.
 enum SegLabel<'a> {
@@ -1618,13 +1602,13 @@ impl<'a> Ui<'a> {
             let x = (track.x + track.w * pos - tw / 2.0).clamp(r.x, r.x + r.w - tw);
             self.fonts.draw(self.c, label, x, r.y + 37.0, 10.0, false, ink_l);
         }
-        // Polegar em escudo
+        // Polegar redondo, igual ao dos sliders sem marcas (um só padrão).
         let t = ((*value - min) / (max - min)).clamp(0.0, 1.0);
         let kx = (track.x + track.w * t).round();
         let grabbed = self.mem.slider_grab == Some(id);
         let a = self.theme.accent;
-        let base = if !enabled { rgba(238, 238, 240, 255) } else if grabbed { lighten(a, 0.2) } else { lighten(a, 0.45) };
-        slider_thumb_down(self.c, kx, r.y + 3.0, base);
+        let base = if !enabled { rgba(238, 238, 240, 255) } else if grabbed { lighten(a, 0.2) } else { lighten(a, 0.5) };
+        gel_circle(self.c, kx, track.y + track.h / 2.0, 7.5, base);
         changed
     }
 
@@ -3208,6 +3192,16 @@ impl<'a> Ui<'a> {
     /// As ranhuras do puxador, com o canto inferior direito em `(x, y)`.
     pub(crate) fn grip_marks(&mut self, x: f32, y: f32) {
         let (cx, cy) = (x.floor(), y.floor());
+        // No moderno, duas linhas finas e claras (como nas janelas de hoje), sem as cavas.
+        if glove_paint::theme::modern() {
+            let cor = if glove_paint::theme::dark() { rgba(255, 255, 255, 90) } else { rgba(0, 0, 0, 80) };
+            for len in [8.0f32, 4.0] {
+                for t in 0..(len as i32) {
+                    self.c.fill_cell(cx - len + t as f32, cy - t as f32, 1.0, 1.0, cor);
+                }
+            }
+            return;
+        }
         for len in [13.0f32, 10.0, 7.0, 4.0] {
             let n = len as i32;
             for t in 0..n {
