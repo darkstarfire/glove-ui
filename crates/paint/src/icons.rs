@@ -155,6 +155,8 @@ pub enum PrefKind {
     Security,
     /// Janelas espalhadas (Exposé e Painel).
     Expose,
+    /// Tela com o painel de login (Telas do Sistema).
+    LoginScreen,
 }
 
 /// Pastas especiais (Mesa, Documentos…), cada uma com seu desenho.
@@ -302,6 +304,7 @@ impl Icon {
             PrefKind::Speech => "preferences-desktop-text-to-speech",
             PrefKind::Security => "preferences-system-privacy",
             PrefKind::Expose => "preferences-system-windows",
+            PrefKind::LoginScreen => "preferences-system-login",
         })
     }
 
@@ -1323,6 +1326,7 @@ fn pref_icon(pm: &mut Canvas, fonts: &Fonts, k: PrefKind, x: f32, y: f32, s: f32
         PrefKind::Speech => p::speech(pm, x, y, s),
         PrefKind::Security => p::security(pm, x, y, s),
         PrefKind::Expose => p::expose(pm, x, y, s),
+        PrefKind::LoginScreen => p::login_screen(pm, x, y, s),
     }
 }
 

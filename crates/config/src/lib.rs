@@ -312,6 +312,26 @@ pub struct Appearance {
     /// tela de login, o bloqueio e a saída. Desligado, elas ficam no visual clássico.
     #[serde(default)]
     pub system_theme: bool,
+    /// O tema de cada tela do sistema (Preferências ▸ Telas do Sistema): "" = segue a
+    /// opção acima (a aparência, se ligada; senão o clássico), "aparencia" = sempre a
+    /// aparência escolhida, ou o nome de um tema ("claro", "moderno-escuro"…).
+    /// A sessão: abertura da sessão, bloqueio de tela e saída.
+    #[serde(default)]
+    pub screen_session: String,
+    /// A tela de login.
+    #[serde(default)]
+    pub screen_login: String,
+    /// A abertura e o desligamento do sistema (o Plymouth).
+    #[serde(default)]
+    pub screen_boot: String,
+}
+
+/// As telas do sistema que têm tema próprio.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Screen {
+    Session,
+    Login,
+    Boot,
 }
 
 static REDUCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -333,7 +353,7 @@ pub fn anim(d: std::time::Duration) -> std::time::Duration {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false, system_theme: false }
+        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false, system_theme: false, screen_session: String::new(), screen_login: String::new(), screen_boot: String::new() }
     }
 }
 
@@ -538,6 +558,38 @@ impl Default for WallpaperAnim {
 }
 
 impl Config {
+    /// O que está gravado para uma tela do sistema.
+    pub fn screen_choice(&self, which: Screen) -> &str {
+        match which {
+            Screen::Session => &self.appearance.screen_session,
+            Screen::Login => &self.appearance.screen_login,
+            Screen::Boot => &self.appearance.screen_boot,
+        }
+    }
+
+    pub fn set_screen_choice(&mut self, which: Screen, v: &str) {
+        let c = match which {
+            Screen::Session => &mut self.appearance.screen_session,
+            Screen::Login => &mut self.appearance.screen_login,
+            Screen::Boot => &mut self.appearance.screen_boot,
+        };
+        *c = v.to_string();
+    }
+
+    /// O tema (o nome) que uma tela do sistema usa de fato. Sem escolha própria: a
+    /// aparência com "Usar a aparência em todo o sistema" ligada; senão o clássico (a
+    /// própria aparência se ela é clássica, o Claro se é moderna).
+    pub fn screen_theme(&self, which: Screen) -> String {
+        match self.screen_choice(which) {
+            "" if self.appearance.system_theme => self.theme.clone(),
+            "" => {
+                if self.theme.starts_with("moderno") { "claro".into() } else { self.theme.clone() }
+            }
+            "aparencia" => self.theme.clone(),
+            t => t.to_string(),
+        }
+    }
+
     /// O papel de parede de um monitor (pelo nome do conector).
     pub fn wallpaper_for(&self, output: &str) -> &str {
         if self.wallpaper_mode == "por_tela" {

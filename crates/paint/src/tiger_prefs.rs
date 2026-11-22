@@ -628,6 +628,33 @@ pub(crate) fn expose(pm: &mut Canvas, x: f32, y: f32, s: f32) {
     pm.stroke(back, &solid(rgba(14, 36, 90, 255)), u.lw(0.008));
 }
 
+/// Telas do Sistema: um monitor de vidro azul com o painel de login no meio (o retrato
+/// e o campo de senha).
+pub(crate) fn login_screen(pm: &mut Canvas, x: f32, y: f32, s: f32) {
+    let u = U { x, y, s };
+    let tela = u.rr(0.05, 0.1, 0.9, 0.7, 0.06);
+    soft_shadow(pm, tela.clone(), s, 1.0);
+    pm.fill(tela.clone(), &linear(u.px(0.05), u.py(0.1), u.px(0.95), u.py(0.8), &[(0.0, rgba(110, 175, 245, 255)), (0.55, rgba(36, 92, 190, 255)), (1.0, rgba(16, 46, 118, 255))]));
+    // O pé do monitor.
+    pm.fill(u.poly(&[(0.42, 0.8), (0.58, 0.8), (0.62, 0.9), (0.38, 0.9)]), &vgrad(u.py(0.8), u.py(0.9), &[(0.0, rgba(180, 184, 194, 255)), (1.0, rgba(120, 124, 134, 255))]));
+    pm.fill(u.rr(0.3, 0.88, 0.4, 0.04, 0.02), &solid(rgba(110, 114, 124, 255)));
+    // O painel de login.
+    let painel = u.rr(0.27, 0.24, 0.46, 0.44, 0.04);
+    pm.fill(painel.clone(), &vgrad(u.py(0.24), u.py(0.68), &[(0.0, rgba(250, 250, 252, 250)), (1.0, rgba(220, 222, 228, 250))]));
+    pm.stroke(painel, &solid(rgba(60, 70, 100, 160)), u.lw(0.006));
+    pm.fill(u.circ(0.5, 0.36, 0.07), &solid(rgba(120, 128, 146, 255)));
+    pm.fill(u.circ(0.5, 0.34, 0.032), &solid(rgba(236, 238, 244, 255)));
+    pm.fill(u.rr(0.455, 0.37, 0.09, 0.05, 0.025), &solid(rgba(236, 238, 244, 255)));
+    pm.fill(u.rr(0.33, 0.49, 0.34, 0.06, 0.015), &solid(Color::WHITE));
+    pm.stroke(u.rr(0.33, 0.49, 0.34, 0.06, 0.015), &solid(rgba(120, 124, 134, 255)), u.lw(0.006));
+    for k in 0..4 {
+        pm.fill(u.circ(0.38 + k as f32 * 0.045, 0.52, 0.012), &solid(rgba(40, 40, 46, 255)));
+    }
+    pm.fill(u.rr(0.42, 0.58, 0.16, 0.05, 0.025), &linear(0.0, u.py(0.58), 0.0, u.py(0.63), &[(0.0, rgba(120, 180, 250, 255)), (1.0, rgba(40, 110, 220, 255))]));
+    glass_glare(pm, tela.clone(), u.px(0.05), u.py(0.1), u.px(0.95), u.py(0.3), 70);
+    pm.stroke(tela, &solid(rgba(14, 36, 90, 255)), u.lw(0.008));
+}
+
 /// Mouse de plástico branco translúcido de um botão, com o fio.
 pub(crate) fn mouse(pm: &mut Canvas, x: f32, y: f32, s: f32) {
     let u = U { x, y, s };
