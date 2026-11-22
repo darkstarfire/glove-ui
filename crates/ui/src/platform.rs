@@ -1139,12 +1139,22 @@ impl<A: App> Runner<A> {
             // Passadas só para pintar: os pedidos e o estado do quadro já vieram
             // da passada anotada (o app vê o mesmo estado, sem eventos).
             let keep = (std::mem::take(&mut self.w.mem.hover_rects), self.w.mem.pointer_sensitive, std::mem::take(&mut self.w.mem.anim_rects), self.w.mem.anim_full);
+            let alert = self.w.alert_of.clone();
             for r in &rects {
                 canvas.set_region(Some(*r));
                 self.background(&mut canvas);
                 let _ = {
                     let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-                    self.app.ui(&mut ui);
+                    // A janela do alerta só pinta o alerta (o app nunca desenha nela: ele
+                    // pintaria a própria tela por cima e mudaria o estado dele com o
+                    // tamanho errado).
+                    match &alert {
+                        Some((_, req)) => {
+                            let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
+                            let _ = ui.alert_window(req.kind, &req.title, &req.text, &b);
+                        }
+                        None => self.app.ui(&mut ui),
+                    }
                     ui.finish()
                 };
                 canvas.set_clip(None);
@@ -1209,8 +1219,15 @@ impl<A: App> Runner<A> {
         let Some(mut full) = Canvas::new(canvas.w, canvas.h, canvas.scale) else { return };
         self.background(&mut full);
         {
+            let alert = self.w.alert_of.clone();
             let mut ui = Ui::new(&mut full, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-            self.app.ui(&mut ui);
+            match &alert {
+                Some((_, req)) => {
+                    let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
+                    let _ = ui.alert_window(req.kind, &req.title, &req.text, &b);
+                }
+                None => self.app.ui(&mut ui),
+            }
             let _ = ui.finish();
         }
         self.w.mem.drop_requests();

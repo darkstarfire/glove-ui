@@ -1712,20 +1712,21 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
     }
 }
 
-/// Dois botões de ligar (o ícone da central de controle): o de cima só no contorno, com a
-/// bolinha à direita; o de baixo cheio, com a bolinha à esquerda RECORTADA. As partes
-/// "claras" são vazadas, não pintadas: mostram o fundo de verdade (a barra clara, a escura
-/// ou o destaque com o menu aberto). Pintá-las com uma cor fixa deixava o ícone um bloco
-/// branco no tema escuro.
+/// Dois botões de ligar (o ícone da central de controle), como nos sistemas de hoje: o de
+/// cima só no contorno, com a bolinha cheia à esquerda (desligado); o de baixo cheio, com
+/// a bolinha à direita RECORTADA (ligado). O recorte é vazado de verdade (regra par-ímpar),
+/// não pintado: mostra o fundo (a barra clara, a escura ou o destaque com o menu aberto);
+/// pintado de branco, o ícone virava um bloco no tema escuro.
 fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
-    // Dois interruptores iguais, vazados: o contorno da pílula e a bolinha cheia (em cima
-    // à esquerda, embaixo à direita). Os dois com as mesmas cores; sem parte cheia grande
-    // (no tema escuro o ícone não vira um bloco branco).
     c.stroke(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(color), 1.2);
     c.fill(circle(x + 3.8, y + 3.8, 2.0), &solid(color));
     let yy = y + 8.6;
-    c.stroke(rrect(x + 0.6, yy, 15.0, 6.4, 3.2), &solid(color), 1.2);
-    c.fill(circle(x + 12.4, yy + 3.2, 2.0), &solid(color));
+    let mut pb = tiny_skia::PathBuilder::new();
+    if let Some(p) = rrect(x, yy - 0.4, 16.2, 7.6, 3.8) {
+        pb.push_path(&p);
+    }
+    pb.push_circle(x + 12.2, yy + 3.4, 2.3);
+    c.fill_rule(pb.finish(), &solid(color), tiny_skia::FillRule::EvenOdd);
 }
 
 /// Central de controle: o que ela mostra (None = o computador não tem).
@@ -2891,12 +2892,12 @@ mod control_tests {
             let p = c.pm.pixel((x * 4.0) as u32, (y * 4.0) as u32).unwrap();
             (p.red(), p.green(), p.blue())
         };
-        // O miolo das duas chaves (longe do contorno e das bolinhas) mostra o fundo.
+        // A chave de cima: o miolo mostra o fundo e a bolinha (à esquerda) é cheia.
         assert_eq!(px(2.0 + 10.0, 2.0 + 3.8), (30, 30, 34));
-        assert_eq!(px(2.0 + 6.0, 2.0 + 8.6 + 3.2), (30, 30, 34));
-        // As bolinhas são cheias, da cor do traço: em cima à esquerda, embaixo à direita.
         assert_ne!(px(2.0 + 3.8, 2.0 + 3.8), (30, 30, 34));
-        assert_ne!(px(2.0 + 12.4, 2.0 + 8.6 + 3.2), (30, 30, 34));
+        // A de baixo é cheia, e a bolinha (à direita) é um furo que mostra o fundo.
+        assert_ne!(px(2.0 + 5.0, 2.0 + 8.6 + 3.4), (30, 30, 34));
+        assert_eq!(px(2.0 + 12.2, 2.0 + 8.6 + 3.4), (30, 30, 34));
     }
 
     /// A central com tudo (botões e os três trilhos) cabe na altura medida.

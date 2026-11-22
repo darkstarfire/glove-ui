@@ -879,32 +879,60 @@ pub fn logo(pm: &mut Canvas, x: f32, y: f32, s: f32, _accent: tiny_skia::Color) 
     pm.draw_pixmap_t(img.as_ref(), &paint, t);
 }
 
-/// A logo chapada numa cor só, opaca (a silhueta da luva): preta no Moderno Claro e
-/// branca no Moderno Escuro, como as marcas monocromáticas das barras de hoje. Os
-/// contornos do desenho ficam vazados (os dedos e o punho continuam legíveis).
+/// A logo chapada numa cor só, opaca: preta no Moderno Claro e branca no Moderno
+/// Escuro, como as marcas monocromáticas das barras de hoje. Um desenho vetorial próprio
+/// (não a silhueta da luva de gel, que virava um borrão): a palma, os quatro dedos com
+/// os vãos, o polegar, o punho destacado e a mordida do lado, levemente inclinada como
+/// a luva de gel. Em coordenadas de 0 a 100, girada 12° em volta do centro.
 pub fn logo_solid(pm: &mut Canvas, x: f32, y: f32, s: f32, color: tiny_skia::Color) {
-    let px = s * pm.scale;
-    let mips = logo_mips();
-    let Some(img) = mips.iter().rev().find(|m| m.width() as f32 >= px).or(mips.first()) else { return };
-    let Some(mut sil) = tiny_skia::Pixmap::new(img.width(), img.height()) else { return };
-    let c = color.premultiply().to_color_u8();
-    for (d, sp) in sil.pixels_mut().iter_mut().zip(img.pixels()) {
-        // A forma: só o que é da luva (a sombra suave em volta fica de fora).
-        let a0 = sp.alpha() as f32 / 255.0;
-        let forma = ((a0 - 0.3) / 0.2).clamp(0.0, 1.0);
-        // Os contornos escuros do desenho (entre os dedos, o punho) viram vãos: sem
-        // eles, a luva chapada seria um borrão.
-        let q = sp.demultiply();
-        let lum = 0.299 * q.red() as f32 + 0.587 * q.green() as f32 + 0.114 * q.blue() as f32;
-        let a = forma * ((lum - 60.0) / 50.0).clamp(0.0, 1.0);
-        if let Some(p) = tiny_skia::PremultipliedColorU8::from_rgba((c.red() as f32 * a) as u8, (c.green() as f32 * a) as u8, (c.blue() as f32 * a) as u8, (c.alpha() as f32 * a) as u8) {
-            *d = p;
+    let px = (s * pm.scale).round().max(1.0) as u32;
+    let Some(mut m) = tiny_skia::Pixmap::new(px, px) else { return };
+    let k = px as f32 / 100.0;
+    let t = tiny_skia::Transform::from_rotate_at(12.0, 50.0, 50.0).post_scale(k, k);
+    let mut tinta = tiny_skia::Paint::default();
+    tinta.set_color(color);
+    tinta.anti_alias = true;
+    let mut apaga = tiny_skia::Paint::default();
+    apaga.blend_mode = tiny_skia::BlendMode::Clear;
+    apaga.anti_alias = true;
+    let rr = |x: f32, y: f32, w: f32, h: f32, r: f32| crate::draw::rrect(x, y, w, h, r);
+    let encher = |m: &mut tiny_skia::Pixmap, p: Option<tiny_skia::Path>, paint: &tiny_skia::Paint| {
+        if let Some(p) = p {
+            m.fill_path(&p, paint, tiny_skia::FillRule::Winding, t, None);
         }
+    };
+    // Traço grosso de pontas redondas (dedos e polegar).
+    let capsula = |m: &mut tiny_skia::Pixmap, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, paint: &tiny_skia::Paint| {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(x0, y0);
+        pb.line_to(x1, y1);
+        if let Some(p) = pb.finish() {
+            let st = tiny_skia::Stroke { width: w, line_cap: tiny_skia::LineCap::Round, ..Default::default() };
+            m.stroke_path(&p, paint, &st, t, None);
+        }
+    };
+    // A palma (redonda em cima, quase reta embaixo, onde encontra o punho).
+    encher(&mut m, rr(23.0, 38.0, 54.0, 22.0, 14.0), &tinta);
+    encher(&mut m, rr(23.0, 50.0, 54.0, 31.0, 6.0), &tinta);
+    // Os dedos: (centro, topo, largura), do indicador ao mínimo.
+    let dedos = [(30.5, 18.0, 12.5), (43.5, 10.0, 13.0), (56.5, 12.0, 13.0), (69.0, 22.0, 12.0)];
+    for (cx, topo, w) in dedos {
+        capsula(&mut m, cx, topo + w / 2.0, cx, 50.0, w, &tinta);
     }
-    let k = px / img.width() as f32;
-    let t = tiny_skia::Transform::from_row(k, 0.0, 0.0, k, (x * pm.scale).round(), (y * pm.scale).round());
-    let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
-    pm.draw_pixmap_t(sil.as_ref(), &paint, t);
+    // O polegar, para cima e para fora.
+    capsula(&mut m, 30.0, 66.0, 13.0, 47.0, 13.5, &tinta);
+    // O punho, da largura da palma.
+    encher(&mut m, rr(21.0, 83.0, 58.0, 11.0, 4.0), &tinta);
+    // Os vãos entre os dedos (até onde a palma começa).
+    for par in dedos.windows(2) {
+        let xm = (par[0].0 + par[1].0) / 2.0;
+        capsula(&mut m, xm, -5.0, xm, 40.0, 2.0, &apaga);
+    }
+    // O vão entre a mão e o punho, e a mordida.
+    encher(&mut m, tiny_skia::Rect::from_xywh(15.0, 81.0, 70.0, 2.0).map(tiny_skia::PathBuilder::from_rect), &apaga);
+    encher(&mut m, tiny_skia::PathBuilder::from_circle(80.0, 54.0, 10.0), &apaga);
+    let paint = tiny_skia::PixmapPaint::default();
+    pm.draw_pixmap_t(m.as_ref(), &paint, tiny_skia::Transform::from_translate((x * pm.scale).round(), (y * pm.scale).round()));
 }
 
 /// A logo no tema: gel nos clássicos, chapada (preta ou branca) nos modernos.
