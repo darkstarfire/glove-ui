@@ -713,6 +713,19 @@ fn px_union(rects: &[crate::ui::Rect], scale: f32) -> [i32; 4] {
     u
 }
 
+/// As áreas a copiar sem as que já estão dentro de outra (as repetidas inclusive).
+fn sem_repetidas(mut v: Vec<[i32; 4]>) -> Vec<[i32; 4]> {
+    let area = |r: &[i32; 4]| (r[2] - r[0]).max(0) as i64 * (r[3] - r[1]).max(0) as i64;
+    v.sort_by_key(|r| std::cmp::Reverse(area(r)));
+    let mut out: Vec<[i32; 4]> = Vec::with_capacity(v.len());
+    for r in v {
+        if area(&r) > 0 && !out.iter().any(|o| o[0] <= r[0] && o[1] <= r[1] && o[2] >= r[2] && o[3] >= r[3]) {
+            out.push(r);
+        }
+    }
+    out
+}
+
 /// Compara o quadro novo (`cur`, RGBA w×h) com o anterior (`prev`) dentro de
 /// `region` e devolve as áreas que mudaram, já copiadas para `prev`. Linhas
 /// vizinhas que mudaram viram um só retângulo (até 8 linhas de folga).
@@ -1948,6 +1961,9 @@ impl<A: App> Runner<A> {
         } else {
             copy = vec![[0, 0, pw, ph]];
         }
+        // Rolando uma página, cada quadro muda a área inteira: as áreas dos quadros
+        // anteriores repetiam a mesma cópia (e a troca de cores) duas ou três vezes.
+        let copy = sem_repetidas(copy);
         let (buffer, _) = &self.w.buffers[idx];
         let Some(dst) = self.pool.canvas(buffer) else { return };
         let src = c.data();
@@ -2546,6 +2562,12 @@ mod tests {
     }
 
     use super::frame_damage;
+
+    #[test]
+    fn areas_repetidas_saem() {
+        let v = vec![[0, 0, 100, 50], [10, 10, 20, 20], [0, 0, 100, 50], [90, 40, 120, 60], [5, 5, 5, 9]];
+        assert_eq!(super::sem_repetidas(v), vec![[0, 0, 100, 50], [90, 40, 120, 60]]);
+    }
 
     #[test]
     fn so_o_que_mudou() {
