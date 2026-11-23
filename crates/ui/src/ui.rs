@@ -1831,6 +1831,9 @@ impl<'a> Ui<'a> {
         let max = ((r.w - 16.0) / step) as usize;
         let first = n.saturating_sub(max);
         let cy = r.y + r.h / 2.0;
+        // As bolinhas e o cursor já vêm na cor certa para o tema: sem isso, no modo
+        // escuro o claro de `ink()` virava grafite e as bolinhas sumiam no campo.
+        let remap = std::mem::replace(&mut self.c.dark_remap, false);
         for i in first..n {
             self.c.fill(circle(r.x + 9.0 + (i - first) as f32 * step, cy, 3.0), &solid(ink()));
         }
@@ -1838,6 +1841,7 @@ impl<'a> Ui<'a> {
             let cx = r.x + 5.5 + (cur.saturating_sub(first)) as f32 * step;
             self.c.fill_rect(cx, r.y + 4.0, 1.0, r.h - 8.0, &solid(ink()));
         }
+        self.c.dark_remap = remap;
         enter
     }
 
