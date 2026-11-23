@@ -1691,6 +1691,38 @@ pub enum Extra {
     Recording { tempo: String, aceso: bool },
     /// Central de controle (Wi-Fi, Bluetooth, brilho, luz do teclado, som).
     Control,
+    /// Ícone de um app na bandeja (StatusNotifierItem: Telegram, Discord, Steam…); sem
+    /// imagem, a inicial do nome numa plaquinha.
+    Tray { icon: Option<TrayIcon>, title: String },
+}
+
+/// A imagem de um ícone da bandeja: RGBA pré-multiplicado, `w`×`h` pixels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrayIcon {
+    pub w: u32,
+    pub h: u32,
+    pub rgba: std::sync::Arc<Vec<u8>>,
+}
+
+/// Lado do ícone da bandeja na barra (pontos).
+pub const TRAY_ICON: f32 = 16.0;
+
+/// O ícone da bandeja em (x, y), com `TRAY_ICON` de lado (a imagem do app, reduzida
+/// mantendo a proporção; sem ela, a inicial do nome).
+fn tray_glyph(c: &mut Canvas, fonts: &Fonts, icon: Option<&TrayIcon>, title: &str, x: f32, y: f32, col: Color) {
+    let s = TRAY_ICON;
+    if let Some(img) = icon.and_then(|i| tiny_skia::PixmapRef::from_bytes(&i.rgba, i.w, i.h)) {
+        let k = c.scale * s / img.width().max(img.height()).max(1) as f32;
+        let (dw, dh) = (img.width() as f32 * k, img.height() as f32 * k);
+        let (px, py) = (x * c.scale + (s * c.scale - dw) / 2.0, y * c.scale + (s * c.scale - dh) / 2.0);
+        let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bicubic, ..Default::default() };
+        c.draw_pixmap_t(img, &paint, tiny_skia::Transform::from_row(k, 0.0, 0.0, k, px.round(), py.round()));
+        return;
+    }
+    let letra: String = title.chars().find(|ch| ch.is_alphanumeric()).map(|ch| ch.to_uppercase().collect()).unwrap_or_else(|| "?".into());
+    c.stroke(rrect(x + 0.5, y + 0.5, s - 1.0, s - 1.0, 4.0), &solid(col), 1.2);
+    let tw = fonts.measure(&letra, 10.0, true);
+    fonts.draw(c, &letra, x + (s - tw) / 2.0, y + s / 2.0 + 3.5, 10.0, true, col);
 }
 
 /// Largura do extra na barra.
@@ -1709,6 +1741,7 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
         Extra::Notifications { unread, .. } => 30.0 + fonts.measure(&(*unread).min(99).to_string(), 9.0, true),
         Extra::Recording { tempo, .. } => 22.0 + fonts.measure(tempo, MENUBAR_PX, false),
         Extra::Control => 30.0,
+        Extra::Tray { .. } => TRAY_ICON + 10.0,
     }
 }
 
@@ -2080,6 +2113,7 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
             Extra::Control => control_glyph(c, a + 7.0, 3.0, col),
+            Extra::Tray { icon, title } => tray_glyph(c, fonts, icon.as_ref(), title, a + 5.0, (MENUBAR_H as f32 - TRAY_ICON) / 2.0, col),
             Extra::Recording { tempo, aceso } => {
                 // Bolinha vermelha (piscando) e o tempo decorrido ao lado.
                 let (c1, c2) = if *aceso {
