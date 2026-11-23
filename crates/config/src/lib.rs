@@ -678,6 +678,12 @@ pub struct Monitor {
     /// nome do conector. Sem entrada, cada um usa a recomendada e a escala automática.
     #[serde(default)]
     pub others: std::collections::BTreeMap<String, OtherMonitor>,
+    /// Mesa estendida: a barra de menu em todos os monitores (senão, só no principal).
+    pub menubar_all: bool,
+    /// Mesa estendida: o Dock em todos os monitores.
+    pub dock_all: bool,
+    /// A barra de menu dos monitores sem o foco (sem a janela ativa) fica esmaecida.
+    pub dim_inactive: bool,
 }
 
 /// Ajustes de um monitor que não é o principal.
@@ -700,7 +706,7 @@ fn default_side() -> String {
 
 impl Default for Monitor {
     fn default() -> Self {
-        Self { output: String::new(), mode: String::new(), scale: 0.0, menu_extra: true, arrangement: default_arrangement(), side: default_side(), others: Default::default() }
+        Self { output: String::new(), mode: String::new(), scale: 0.0, menu_extra: true, arrangement: default_arrangement(), side: default_side(), others: Default::default(), menubar_all: true, dock_all: true, dim_inactive: true }
     }
 }
 
