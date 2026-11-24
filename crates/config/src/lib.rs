@@ -1293,6 +1293,17 @@ impl Config {
 
 /// Observa a pasta de configuração (inotify) sem acordar a CPU à toa.
 /// Retorna o descritor; ele fica legível quando o arquivo muda.
+/// Os ícones de cada aparência quando ela vale em todo o sistema: as modernas usam os do
+/// Mide (o Moderno Claro, os "mide"; o Moderno Escuro, os "mide-dark"), as clássicas os
+/// do Glove (vazio: o padrão). Quem chama confere se o tema de ícones está instalado.
+pub fn icones_da_aparencia(tema: &str) -> &'static str {
+    match tema {
+        "moderno" => "mide",
+        "moderno-escuro" => "mide-dark",
+        _ => "",
+    }
+}
+
 pub fn watch_fd() -> Option<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
     let d = dir();
