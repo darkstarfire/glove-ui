@@ -415,10 +415,14 @@ fn traduzir(keyval: gdk::Key, state: gdk::ModifierType) -> (Key, String, crate::
     (key, combo, mods)
 }
 
+/// Sem a sombra e o raio que o GTK desenha nas janelas com barra própria: a sombra e os
+/// cantos são do Glove (o compositor os desenha nas janelas sem moldura, como nos alertas).
+/// O GTK reserva 12 px de margem para a sombra no nó `decoration`, dentro da janela.
 const CSS: &str = "
-window.glove-bare, window.glove-bare.csd, window.glove-bare.solid-csd {
-  box-shadow: none; margin: 0; border-radius: 0; outline: none; border: none; padding: 0;
+window.glove-bare, window.glove-bare decoration, window.glove-bare.csd {
+  box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; outline: none; border: none; padding: 0 !important;
 }
+window.glove-bare.csd decoration { margin: 0 !important; box-shadow: none !important; }
 ";
 
 thread_local! {
@@ -959,6 +963,10 @@ impl<A: App> State<A> {
             let State { app, wins, fonts, doc_fonts, theme, alert_done, .. } = self;
             let w = &mut wins[i];
             w.dirty = false;
+            // A janela ativa (o GTK só avisa quando muda: a que já nasce ativa ficava com
+            // os botões apagados).
+            w.input.active = w.window.is_active();
+            w.input.maximized = w.window.is_maximized();
             w.mem.anim_rects.clear();
             w.mem.anim_full = false;
             let scale = w.scale as f32;
@@ -1366,7 +1374,10 @@ impl<A: App> State<A> {
         use std::io::Write;
         let Some(path) = std::env::var_os("GLOVE_MENU_SOCKET").filter(|p| !p.is_empty()) else { return };
         let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&path) else { return };
-        if stream.write_all(format!("HELLO\t{}\n", std::process::id()).as_bytes()).is_err() {
+        // As janelas sem barra do Glove (a principal com moldura própria, os alertas) ganham
+        // a sombra e os cantos dele: o GTK guarda em volta delas uma margem invisível para
+        // redimensionar, e sem o pedido o Glove as trataria como as de apps com sombra própria.
+        if stream.write_all(format!("HELLO\t{}\nMOLDURA\tglove\n", std::process::id()).as_bytes()).is_err() {
             return;
         }
         let Ok(mut reader) = stream.try_clone() else { return };

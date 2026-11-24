@@ -1773,6 +1773,187 @@ impl<'a> Ui<'a> {
         (changed, enter)
     }
 
+    /// Campo de uma linha com seleção (como a barra de endereço de um navegador): clicar
+    /// põe o cursor no lugar, arrastar escolhe, dois cliques escolhem a palavra e três a
+    /// linha; Shift com as setas, Ctrl com as setas anda por palavra; Ctrl+A, Ctrl+C,
+    /// Ctrl+X, Ctrl+V e Ctrl+Z. O texto longo rola para os lados. `autofocus` põe o cursor
+    /// nele com tudo escolhido (digitar troca tudo). Devolve (mudou, Enter).
+    pub fn line_edit(&mut self, r: Rect, buf: &mut TextBuffer, autofocus: bool) -> (bool, bool) {
+        let id = self.next_id();
+        const PAD: f32 = 6.0;
+        let px = (r.h * 0.56).min(TEXT);
+        let fonts = self.fonts;
+        let width = |s: &str| fonts.measure(s, px, false);
+        if autofocus {
+            self.mem.focus = Some(id);
+            buf.select_all();
+            buf.reveal = true;
+        }
+        // Posição x (no conteúdo) → byte no texto.
+        let hit = |buf: &TextBuffer, x: f32| -> usize {
+            let s = buf.text();
+            let mut prev = 0.0;
+            for (i, ch) in s.char_indices() {
+                let w = width(&s[..i + ch.len_utf8()]);
+                if x < (prev + w) / 2.0 {
+                    return i;
+                }
+                prev = w;
+            }
+            s.len()
+        };
+        let hover = self.hovered(r);
+        if hover {
+            self.mem.mouse_cursor = Cursor::Text;
+        }
+        let local_x = |ui: &Self, buf: &TextBuffer| ui.pos().0 - r.x - PAD + buf.scroll_x;
+        if hover && self.input.pressed {
+            let ja = self.mem.focus == Some(id);
+            self.mem.focus = Some(id);
+            self.mem.active = Some(id);
+            let p = hit(buf, local_x(self, buf));
+            if self.input.clicks >= 3 {
+                buf.select_all();
+            } else if self.input.clicks == 2 {
+                buf.select_word(p);
+            } else if !ja && !autofocus {
+                // O primeiro clique escolhe tudo (digitar troca o endereço inteiro); com o
+                // campo já em foco, o clique põe o cursor no lugar.
+                buf.select_all();
+            } else {
+                buf.set_cursor(p, self.input.mods.shift);
+            }
+            buf.reveal = true;
+        } else if self.mem.active == Some(id) && self.input.down && self.input.moved && !self.input.pressed && self.mem.focus == Some(id) {
+            let p = hit(buf, local_x(self, buf));
+            if p != buf.cursor {
+                buf.set_cursor(p, true);
+                buf.reveal = true;
+            }
+        } else if self.input.pressed && !hover && self.mem.focus == Some(id) {
+            self.mem.focus = None;
+        }
+        let focused = self.mem.focus == Some(id) && !self.blocked();
+        let antes = buf.text().to_string();
+        let mut enter = false;
+        if focused {
+            if let Some((pid, text)) = self.mem.paste_in.take() {
+                if pid == id {
+                    buf.insert(&text.replace(['\n', '\r'], " "));
+                    buf.reveal = true;
+                } else {
+                    self.mem.paste_in = Some((pid, text));
+                }
+            }
+            for ch in self.input.text.chars().filter(|c| !c.is_control()) {
+                buf.insert(&ch.to_string());
+                buf.reveal = true;
+            }
+            let shift = self.input.mods.shift;
+            let word = self.input.mods.ctrl || self.input.mods.alt;
+            for k in &self.input.keys {
+                match k.combo.as_str() {
+                    "Ctrl+A" => {
+                        buf.select_all();
+                        continue;
+                    }
+                    "Ctrl+C" | "Ctrl+X" => {
+                        if buf.has_selection() {
+                            self.mem.clip_out = Some(buf.selected_text().to_string());
+                            if k.combo == "Ctrl+X" {
+                                buf.delete();
+                            }
+                        }
+                        continue;
+                    }
+                    "Ctrl+V" => {
+                        self.mem.paste_req = Some(id);
+                        continue;
+                    }
+                    "Ctrl+Z" => {
+                        buf.undo();
+                        continue;
+                    }
+                    "Ctrl+Shift+Z" | "Ctrl+Y" => {
+                        buf.redo();
+                        continue;
+                    }
+                    _ => {}
+                }
+                match k.key {
+                    Key::Backspace => buf.backspace(),
+                    Key::Delete => buf.delete(),
+                    Key::Left => buf.left(shift, word),
+                    Key::Right => buf.right(shift, word),
+                    Key::Home => buf.home(shift, true),
+                    Key::End => buf.end(shift, true),
+                    Key::Enter => {
+                        enter = true;
+                        self.mem.focus = None;
+                    }
+                    Key::Escape => self.mem.focus = None,
+                    _ => continue,
+                }
+                buf.reveal = true;
+            }
+        }
+        let changed = buf.text() != antes;
+        // O cursor à vista (o texto rola para os lados).
+        let vis = (r.w - 2.0 * PAD).max(1.0);
+        let total = width(buf.text());
+        if buf.reveal {
+            buf.reveal = false;
+            let cx = width(&buf.text()[..buf.cursor]);
+            if cx < buf.scroll_x {
+                buf.scroll_x = (cx - 24.0).max(0.0);
+            } else if cx > buf.scroll_x + vis {
+                buf.scroll_x = cx - vis + 24.0;
+            }
+        }
+        buf.scroll_x = buf.scroll_x.clamp(0.0, (total - vis + 2.0).max(0.0));
+        // O campo.
+        if self.theme.modern {
+            if focused {
+                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 9.0), &solid(with_alpha(self.theme.accent, 0.4)));
+            }
+            self.c.fill(rrect(r.x, r.y, r.w, r.h, 7.0), &solid(self.theme.control_border));
+            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 6.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
+        } else {
+            self.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 9.0), &solid(with_alpha(self.theme.accent, if focused { 0.5 } else { 0.25 })));
+            self.c.fill(rrect(r.x, r.y, r.w, r.h, 7.0), &solid(Color::WHITE));
+        }
+        // O texto numa superfície de rascunho (corta o que passa do campo).
+        let tr = Rect::new(r.x + 2.0, r.y + 1.0, r.w - 4.0, r.h - 2.0);
+        let scale = self.c.scale;
+        let mut sc = match self.mem.scratch.remove(&id) {
+            Some(c) if c.w == tr.w && c.h == tr.h && c.scale == scale => c,
+            _ => match Canvas::new(tr.w, tr.h, scale) {
+                Some(c) => c,
+                None => return (changed, enter),
+            },
+        };
+        sc.dark_remap = self.c.dark_remap;
+        self.c.begin_sub(&mut sc, tr.x, tr.y);
+        sc.clear(Color::TRANSPARENT);
+        let x0 = PAD - 2.0 - buf.scroll_x;
+        let base = tr.h / 2.0 + px * 0.36;
+        let (sa, sb) = buf.selection();
+        if focused && sa != sb {
+            let xa = width(&buf.text()[..sa]);
+            let xb = width(&buf.text()[..sb]);
+            sc.fill_rect(x0 + xa, (tr.h - px * 1.35) / 2.0, xb - xa, px * 1.35, &solid(with_alpha(self.theme.highlight, 0.45)));
+        }
+        fonts.draw(&mut sc, buf.text(), x0, base, px, false, ink());
+        if focused && sa == sb {
+            let cx = (x0 + width(&buf.text()[..buf.cursor])).round();
+            sc.fill_rect(cx, (tr.h - px * 1.3) / 2.0, 1.0, px * 1.3, &solid(ink()));
+        }
+        self.c.end_sub(&mut sc, tr.x, tr.y);
+        self.mem.scratch.insert(id, sc);
+        self.mem.scratch_used.push(id);
+        (changed, enter)
+    }
+
     /// Campo de texto num retângulo livre (ex.: renomear no lugar). `autofocus` põe
     /// o cursor nele (no fim). Devolve (mudou, Enter).
     pub fn text_field_in(&mut self, r: Rect, value: &mut String, autofocus: bool) -> (bool, bool) {
