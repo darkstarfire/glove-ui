@@ -2919,7 +2919,7 @@ mod control_tests {
         let mut c = Canvas::new(24.0, 20.0, 4.0).unwrap();
         c.fill_rect(0.0, 0.0, 24.0, 20.0, &solid(fundo));
         control_glyph(&mut c, 2.0, 2.0, rgba(235, 235, 240, 255));
-        if let Ok(dir) = std::env::var("GLOVE_TESTE_PNG") {
+        if let Ok(dir) = std::env::var("GLOVE_TEST_PNG") {
             c.pm.save_png(std::path::Path::new(&dir).join("icone-central-escuro.png")).unwrap();
         }
         let px = |x: f32, y: f32| {
@@ -2945,7 +2945,7 @@ mod control_tests {
         let theme = crate::theme::Theme::new(crate::theme::Variant::Claro);
         if let Some(fonts) = crate::Fonts::load_system() {
             let c = control_panel(&theme, &fonts, &info, 1.0).unwrap();
-            if let Ok(dir) = std::env::var("GLOVE_TESTE_PNG") {
+            if let Ok(dir) = std::env::var("GLOVE_TEST_PNG") {
                 c.pm.save_png(std::path::Path::new(&dir).join("central.png")).unwrap();
             }
         }

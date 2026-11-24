@@ -1,19 +1,19 @@
 //! A janela de senha de administrador para os apps que rodam um comando com o sudo.
 //!
-//! Quem pergunta a senha é o `glove-senha` (o mesmo programa do agente do polkit), numa
-//! janela própria: `glove-senha --sudo`, com o que vai ser feito em GLOVE_SENHA_MENSAGEM.
+//! Quem pergunta a senha é o `glove-auth` (o mesmo programa do agente do polkit), numa
+//! janela própria: `glove-auth --sudo`, com o que vai ser feito em GLOVE_AUTH_MESSAGE.
 //! Ele confere a senha com o próprio sudo, mostra o erro ali mesmo e só então a escreve
 //! na saída. O app continua como antes: passa a senha ao `sudo -S` do comando dele.
 
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 
-/// Um pedido de senha aberto (a janela do glove-senha).
+/// Um pedido de senha aberto (a janela do glove-auth).
 pub struct Pedido {
     child: Child,
 }
 
-/// Um formulário de senha na janela do glove-senha (`glove-senha --campos`): a senha de
+/// Um formulário de senha na janela do glove-auth (`glove-auth --fields`): a senha de
 /// uma rede, trocar a senha da conta ou do chaveiro. A janela não confere nada; os
 /// valores voltam para quem pediu.
 pub struct Formulario<'a> {
@@ -49,31 +49,31 @@ pub enum Resposta {
     Senha(String),
 }
 
-/// O glove-senha ao lado deste programa (a instalação põe todos juntos); senão, o do PATH.
+/// O glove-auth ao lado deste programa (a instalação põe todos juntos); senão, o do PATH.
 fn programa() -> std::path::PathBuf {
-    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("glove-senha"))).filter(|p| p.exists()).unwrap_or_else(|| "glove-senha".into())
+    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("glove-auth"))).filter(|p| p.exists()).unwrap_or_else(|| "glove-auth".into())
 }
 
 impl Pedido {
     /// Abre a janela de senha, dizendo o que vai ser feito ("Atualizar o Glove.").
-    /// None se o glove-senha não está instalado: quem chama pergunta na própria janela.
+    /// None se o glove-auth não está instalado: quem chama pergunta na própria janela.
     pub fn novo(o_que: &str) -> Option<Self> {
-        Self::com(Command::new(programa()).arg("--sudo").env("GLOVE_SENHA_MENSAGEM", o_que))
+        Self::com(Command::new(programa()).arg("--sudo").env("GLOVE_AUTH_MESSAGE", o_que))
     }
 
-    /// Abre o formulário. None se o glove-senha não está instalado.
+    /// Abre o formulário. None se o glove-auth não está instalado.
     pub fn formulario(f: &Formulario) -> Option<Self> {
         let campos: Vec<String> = f.campos.iter().map(|(l, secret)| if *secret { format!("*{l}") } else { l.to_string() }).collect();
         let mut cmd = Command::new(programa());
-        cmd.arg("--campos")
-            .env("GLOVE_SENHA_TITULO", f.titulo)
-            .env("GLOVE_SENHA_MENSAGEM", f.mensagem)
-            .env("GLOVE_SENHA_CAMPOS", campos.join("\n"))
-            .env("GLOVE_SENHA_BOTAO", f.botao)
-            .env("GLOVE_SENHA_ICONE", f.icone)
-            .env("GLOVE_SENHA_ERRO", f.erro.unwrap_or(""));
+        cmd.arg("--fields")
+            .env("GLOVE_AUTH_TITLE", f.titulo)
+            .env("GLOVE_AUTH_MESSAGE", f.mensagem)
+            .env("GLOVE_AUTH_FIELDS", campos.join("\n"))
+            .env("GLOVE_AUTH_BUTTON", f.botao)
+            .env("GLOVE_AUTH_ICON", f.icone)
+            .env("GLOVE_AUTH_ERROR", f.erro.unwrap_or(""));
         if let Some((a, b)) = f.confirmar {
-            cmd.env("GLOVE_SENHA_CONFIRMAR", format!("{a}-{b}"));
+            cmd.env("GLOVE_AUTH_CONFIRM", format!("{a}-{b}"));
         }
         Self::com(&mut cmd)
     }
@@ -169,7 +169,7 @@ mod tests {
         let mut p = Pedido::com(&mut Command::new("true")).unwrap();
         assert_eq!(espera(&mut p), Resposta::Cancelado);
         // O programa não existe: sem janela.
-        assert!(Pedido::com(&mut Command::new("glove-senha-que-nao-existe")).is_none());
+        assert!(Pedido::com(&mut Command::new("glove-auth-que-nao-existe")).is_none());
         // Largar o pedido fecha a janela que ficou aberta (não espera os 30 s).
         let t = Instant::now();
         drop(Pedido::com(Command::new("sleep").arg("30")).unwrap());

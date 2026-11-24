@@ -868,7 +868,7 @@ pub struct Config {
     pub access: Access,
     #[serde(default)]
     pub saver: Saver,
-    /// Navegador do glove-navegador ("" = pela memória: NetSurf ou Firefox).
+    /// Navegador do glove-browser ("" = pela memória: NetSurf ou Firefox).
     #[serde(default)]
     pub navegador: String,
     /// Ao conectar um pendrive ou disco: "abrir" (no Arquivos) ou "nada".
@@ -927,7 +927,7 @@ pub struct Config {
 pub const MAX_DESKTOPS: u32 = 9;
 
 pub fn default_prefs_favorites() -> Vec<String> {
-    ["monitor", "dock", "teclado"].map(String::from).to_vec()
+    ["displays", "dock", "keyboard"].map(String::from).to_vec()
 }
 
 /// Aumente quando a lista padrão do Dock ganhar apps novos.
@@ -1012,21 +1012,102 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
     .collect()
 }
 
+/// The programs that had Portuguese names up to Glove 0.14: (then, now). Only used to bring
+/// stored configuration forward (`Config::rename_old_names`).
+const OLD_PROGRAMS: [(&str, &str); 23] = [
+    ("glove-agenda", "glove-calendar"),
+    ("glove-ajuda", "glove-help"),
+    ("glove-arquivo", "glove-archive"),
+    ("glove-boasvindas", "glove-welcome"),
+    ("glove-central", "glove-appcenter"),
+    ("glove-chaves", "glove-keychain"),
+    ("glove-contatos", "glove-contacts"),
+    ("glove-copias", "glove-backup"),
+    ("glove-correio", "glove-mail"),
+    ("glove-dicionario", "glove-dictionary"),
+    ("glove-escolher", "glove-chooser"),
+    ("glove-fontes", "glove-fonts"),
+    ("glove-fotos", "glove-photos"),
+    ("glove-gravacao", "glove-screenrec"),
+    ("glove-gravador", "glove-voicerec"),
+    ("glove-instalador", "glove-installer"),
+    ("glove-mensagens", "glove-messages"),
+    ("glove-musica", "glove-music"),
+    ("glove-navegador", "glove-browser"),
+    ("glove-registros", "glove-console"),
+    ("glove-sair", "glove-logout"),
+    ("glove-senha", "glove-auth"),
+    ("glove-utilrede", "glove-netutil"),
+];
+
+/// The window ids that went with them: (then, now).
+const OLD_WINDOW_IDS: [(&str, &str); 23] = [
+    ("glove.Agenda", "glove.Calendar"),
+    ("glove.Ajuda", "glove.Help"),
+    ("glove.Arquivo", "glove.Archive"),
+    ("glove.Boasvindas", "glove.Welcome"),
+    ("glove.Central", "glove.AppCenter"),
+    ("glove.Chaves", "glove.Keychain"),
+    ("glove.Contatos", "glove.Contacts"),
+    ("glove.Copias", "glove.Backup"),
+    ("glove.Correio", "glove.Mail"),
+    ("glove.Dicionario", "glove.Dictionary"),
+    ("glove.Escolher", "glove.Chooser"),
+    ("glove.Fontes", "glove.Fonts"),
+    ("glove.Fotos", "glove.Photos"),
+    ("glove.Gravacao", "glove.ScreenRec"),
+    ("glove.Gravador", "glove.VoiceRec"),
+    ("glove.Instalador", "glove.Installer"),
+    ("glove.Mensagens", "glove.Messages"),
+    ("glove.Musica", "glove.Music"),
+    ("glove.Navegador", "glove.Browser"),
+    ("glove.Registros", "glove.Console"),
+    ("glove.Sair", "glove.Logout"),
+    ("glove.Senha", "glove.Auth"),
+    ("glove.UtilRede", "glove.NetUtil"),
+];
+
+/// The Preferences panes kept as favorites: (then, now).
+const OLD_PANES: [(&str, &str); 22] = [
+    ("mesa", "desktop"),
+    ("telas", "system-screens"),
+    ("aparencia", "appearance"),
+    ("monitor", "displays"),
+    ("som", "sound"),
+    ("energia", "energy"),
+    ("teclado", "keyboard"),
+    ("rede", "network"),
+    ("datahora", "date-time"),
+    ("contas", "accounts"),
+    ("inicio", "login-items"),
+    ("internacional", "international"),
+    ("acesso", "accessibility"),
+    ("midia", "removable-media"),
+    ("compartilhamento", "sharing"),
+    ("padrao", "default-apps"),
+    ("impressao", "printing"),
+    ("atualizacao", "software-update"),
+    ("inicializacao", "startup-disk"),
+    ("fala", "speech"),
+    ("seguranca", "security"),
+    ("busca", "search"),
+];
+
 pub fn default_dock_apps() -> Vec<DockApp> {
     vec![
         app(tr!("Arquivos"), "files", "glove-files", "glove.Files"),
         app(tr!("Todos os Apps"), "apps-grid", "", GRADE_ID),
         app("Terminal", "terminal", "glove-term", "glove.Terminal"),
-        app("Jangada", "jangada", "glove-navegador", "glove.Navegador"),
-        app(tr!("Correio"), "mail", "glove-correio", "glove.Correio"),
+        app("Jangada", "jangada", "glove-browser", "glove.Browser"),
+        app(tr!("Correio"), "mail", "glove-mail", "glove.Mail"),
         app(tr!("Editor de Texto"), "editor", "glove-edit", "glove.TextEditor"),
         app(tr!("Lembretes"), "notes", "glove-notes", "glove.Notes"),
-        app(tr!("Contatos"), "contacts", "glove-contatos", "glove.Contatos"),
-        app(tr!("Agenda"), "calendar", "glove-agenda", "glove.Agenda"),
+        app(tr!("Contatos"), "contacts", "glove-contacts", "glove.Contacts"),
+        app(tr!("Agenda"), "calendar", "glove-calendar", "glove.Calendar"),
         app(tr!("Calculadora"), "calculator", "glove-calc", "glove.Calculator"),
         app(tr!("Relógio"), "clock", "glove-clock", "glove.Clock"),
         app(tr!("Visualizador"), "viewer", "glove-view", "glove.Viewer"),
-        app(tr!("Música"), "music", "glove-musica", "glove.Musica"),
+        app(tr!("Música"), "music", "glove-music", "glove.Music"),
         app(tr!("Busca"), "search", "glove-find", "glove.Find"),
         app(tr!("Caracteres"), "chars", "glove-chars", "glove.Chars"),
         app(tr!("Captura"), "camera", "glove-shot", "glove.Shot"),
@@ -1041,18 +1122,18 @@ pub fn default_dock_apps() -> Vec<DockApp> {
 pub fn extra_apps() -> Vec<DockApp> {
     vec![
         app(tr!("Vídeo"), "video", "glove-video", "glove.Video"),
-        app(tr!("Registros"), "logs", "glove-registros", "glove.Registros"),
+        app(tr!("Registros"), "logs", "glove-console", "glove.Console"),
         app(tr!("Informações do Sistema"), "info", "glove-info", "glove.Info"),
-        app(tr!("Ajuda"), "help", "glove-ajuda", "glove.Ajuda"),
-        app(tr!("Dicionário"), "dictionary", "glove-dicionario", "glove.Dicionario"),
-        app(tr!("Livro de Fontes"), "fontbook", "glove-fontes", "glove.Fontes"),
-        app(tr!("Acesso às Chaves"), "keychain", "glove-chaves", "glove.Chaves"),
-        app(tr!("Utilitário de Rede"), "netutil", "glove-utilrede", "glove.UtilRede"),
-        app(tr!("Cópias de Segurança"), "backup", "glove-copias", "glove.Copias"),
-        app(tr!("Central de Apps"), "appcenter", "glove-central", "glove.Central"),
-        app(tr!("Mensagens"), "messages", "glove-mensagens", "glove.Mensagens"),
-        app(tr!("Fotos"), "photos", "glove-fotos", "glove.Fotos"),
-        app(tr!("Gravador"), "recorder", "glove-gravador", "glove.Gravador"),
+        app(tr!("Ajuda"), "help", "glove-help", "glove.Help"),
+        app(tr!("Dicionário"), "dictionary", "glove-dictionary", "glove.Dictionary"),
+        app(tr!("Livro de Fontes"), "fontbook", "glove-fonts", "glove.Fonts"),
+        app(tr!("Acesso às Chaves"), "keychain", "glove-keychain", "glove.Keychain"),
+        app(tr!("Utilitário de Rede"), "netutil", "glove-netutil", "glove.NetUtil"),
+        app(tr!("Cópias de Segurança"), "backup", "glove-backup", "glove.Backup"),
+        app(tr!("Central de Apps"), "appcenter", "glove-appcenter", "glove.AppCenter"),
+        app(tr!("Mensagens"), "messages", "glove-messages", "glove.Messages"),
+        app(tr!("Fotos"), "photos", "glove-photos", "glove.Photos"),
+        app(tr!("Gravador"), "recorder", "glove-voicerec", "glove.VoiceRec"),
     ]
 }
 
@@ -1151,7 +1232,8 @@ impl Config {
                 }
                 let added = c.add_missing_shortcuts();
                 let gel = c.drop_removed_gel();
-                if c.migrate() || added || gel {
+                let renamed = c.rename_old_names();
+                if c.migrate() || added || gel || renamed {
                     let _ = c.save();
                 }
                 set_reduce_effects(c.appearance.reduce_effects);
@@ -1216,6 +1298,45 @@ impl Config {
         changed
     }
 
+    /// Up to Glove 0.14 the programs, the window ids and the Preferences panes had Portuguese
+    /// names. What the user's configuration still stores under those names (the Dock apps,
+    /// the favorite panes) moves to the names of today. Returns whether anything changed.
+    pub fn rename_old_names(&mut self) -> bool {
+        let mut changed = false;
+        for a in &mut self.dock_apps {
+            if let Some((_, new)) = OLD_WINDOW_IDS.iter().find(|(old, _)| a.app_id == *old) {
+                a.app_id = new.to_string();
+                changed = true;
+            }
+            // The program is the first word of the command (maybe with a folder in front).
+            let command: Vec<String> = a
+                .command
+                .split(' ')
+                .enumerate()
+                .map(|(i, word)| {
+                    let (folder, name) = word.rsplit_once('/').map_or(("", word), |(f, n)| (f, n));
+                    match OLD_PROGRAMS.iter().find(|(old, _)| i == 0 && name == *old) {
+                        Some((_, new)) if folder.is_empty() => new.to_string(),
+                        Some((_, new)) => format!("{folder}/{new}"),
+                        None => word.to_string(),
+                    }
+                })
+                .collect();
+            let command = command.join(" ");
+            if command != a.command {
+                a.command = command;
+                changed = true;
+            }
+        }
+        for f in &mut self.prefs_favorites {
+            if let Some((_, new)) = OLD_PANES.iter().find(|(old, _)| f == old) {
+                *f = new.to_string();
+                changed = true;
+            }
+        }
+        changed
+    }
+
     pub fn migrate(&mut self) -> bool {
         if self.dock_rev >= DOCK_REV {
             return false;
@@ -1230,13 +1351,13 @@ impl Config {
         ];
         for a in &mut self.dock_apps {
             // O Navegador virou a Jangada (o navegador do Glove), com o ícone dela.
-            if a.app_id == "glove.Navegador" && a.icon == "globe" {
+            if a.app_id == "glove.Browser" && a.icon == "globe" {
                 a.icon = "jangada".into();
                 a.name = "Jangada".into();
             }
-            // O Firefox direto (perfil do Glove) virou o glove-navegador (NetSurf ou Firefox).
+            // O Firefox direto (perfil do Glove) virou o glove-browser (NetSurf ou Firefox).
             if a.app_id == "firefox" && a.command.contains(".cache/glove/firefox") {
-                if let Some(d) = defaults.iter().find(|d| d.app_id == "glove.Navegador") {
+                if let Some(d) = defaults.iter().find(|d| d.app_id == "glove.Browser") {
                     *a = d.clone();
                 }
             }
@@ -1276,7 +1397,7 @@ impl Config {
                 a.icon = "files".into();
             }
             // Ícones próprios dos utilitários (antes reaproveitavam os de outros).
-            for (id, old, new) in [("glove.Viewer", "picture", "viewer"), ("glove.Disks", "disk", "diskutil"), ("glove.UtilRede", "globe", "netutil")] {
+            for (id, old, new) in [("glove.Viewer", "picture", "viewer"), ("glove.Disks", "disk", "diskutil"), ("glove.NetUtil", "globe", "netutil")] {
                 if a.app_id == id && a.icon == old {
                     a.icon = new.into();
                 }
@@ -1391,6 +1512,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn old_names_in_stored_config() {
+        let mut c = Config::default();
+        c.dock_apps = vec![
+            DockApp { name: "Música".into(), icon: "music".into(), command: "glove-musica".into(), app_id: "glove.Musica".into() },
+            DockApp { name: "Jangada".into(), icon: "jangada".into(), command: "/usr/bin/glove-navegador https://exemplo.com".into(), app_id: "glove.Navegador".into() },
+            DockApp { name: "Arquivos".into(), icon: "files".into(), command: "glove-files".into(), app_id: "glove.Files".into() },
+            // A word that only looks like a program further along the command stays.
+            DockApp { name: "Editor".into(), icon: "editor".into(), command: "glove-edit glove-sair".into(), app_id: "glove.TextEditor".into() },
+        ];
+        c.prefs_favorites = vec!["rede".into(), "dock".into(), "datahora".into()];
+        assert!(c.rename_old_names());
+        assert_eq!((c.dock_apps[0].command.as_str(), c.dock_apps[0].app_id.as_str()), ("glove-music", "glove.Music"));
+        assert_eq!((c.dock_apps[1].command.as_str(), c.dock_apps[1].app_id.as_str()), ("/usr/bin/glove-browser https://exemplo.com", "glove.Browser"));
+        assert_eq!(c.dock_apps[2].command, "glove-files");
+        assert_eq!(c.dock_apps[3].command, "glove-edit glove-sair");
+        assert_eq!(c.prefs_favorites, ["network", "dock", "date-time"]);
+        // Nothing left to rename the second time.
+        assert!(!c.rename_old_names());
+        // Every default app and favorite pane already has today's name.
+        let mut d = Config::default();
+        d.dock_apps = default_dock_apps().into_iter().chain(extra_apps()).collect();
+        assert!(!d.rename_old_names());
+    }
+
+    #[test]
     fn migra_config_antiga() {
         let old = r#"
 theme = "metal"
@@ -1444,8 +1590,8 @@ const FILE_APPS: &[(&str, &str, &str, &str)] = &[
     ("glove-view", "Visualizador", "image-x-generic", "image/png;image/jpeg;image/pjpeg;image/webp;application/pdf;"),
     ("glove-edit", "Editor de Texto", "accessories-text-editor", "text/plain;text/markdown;text/x-csrc;text/x-chdr;text/x-python;text/x-shellscript;application/x-shellscript;text/x-rust;application/json;application/toml;application/xml;text/xml;text/css;text/html;"),
     ("glove-video", "Vídeo", "video-x-generic", "video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;video/ogg;video/x-flv;video/3gpp;"),
-    ("glove-fontes", "Livro de Fontes", "font-x-generic", "font/ttf;font/otf;font/collection;application/x-font-ttf;application/x-font-otf;"),
-    ("glove-musica", "Música", "audio-x-generic", "audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/wav;audio/x-vorbis+ogg;"),
+    ("glove-fonts", "Livro de Fontes", "font-x-generic", "font/ttf;font/otf;font/collection;application/x-font-ttf;application/x-font-otf;"),
+    ("glove-music", "Música", "audio-x-generic", "audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/wav;audio/x-vorbis+ogg;"),
 ];
 
 /// Registra os apps do Glove que abrem arquivos em `~/.local/share/applications`
@@ -1541,11 +1687,11 @@ pub fn term_theme(id: &str) -> TermTheme {
 /// de fora, o Icon= do .desktop dele; senão "window".
 pub fn app_icon_name(dock: &[DockApp], app_id: &str) -> String {
     // Utilitários que não aparecem na Busca, mas têm janela (e ícone próprio).
-    if app_id == "glove.Arquivo" {
+    if app_id == "glove.Archive" {
         return "archiver".into();
     }
-    // A janela de senha do sistema (glove-senha): o chaveiro.
-    if app_id == "glove.Senha" {
+    // A janela de senha do sistema (glove-auth): o chaveiro.
+    if app_id == "glove.Auth" {
         return "keychain".into();
     }
     match known_app(dock, app_id) {

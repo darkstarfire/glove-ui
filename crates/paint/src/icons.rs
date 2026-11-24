@@ -405,7 +405,7 @@ fn intern(name: &str) -> u32 {
 static THEME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 /// Troca o tema de ícones (chamado ao ler a configuração).
-/// O tema de ícones padrão: o "Glove" em arquivos PNG (gerado pelo `glove-arte` a
+/// O tema de ícones padrão: o "Glove" em arquivos PNG (gerado pelo `glove-art` a
 /// partir destes mesmos desenhos e instalado com o Glove). É mais leve que desenhar
 /// cada ícone na hora; os desenhos ficam só para o que o tema não tem e para os
 /// ícones vivos (Agenda com o dia, Relógio, os níveis do Lixo).
@@ -414,7 +414,7 @@ pub const DEFAULT_THEME: &str = "Glove";
 /// Data fixa para os calendários (mês × 100 + dia; 0 = hoje).
 static FIXED_DATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-/// Fixa a data dos ícones de calendário (o `glove-arte` gera o tema de ícones com
+/// Fixa a data dos ícones de calendário (o `glove-art` gera o tema de ícones com
 /// uma data só, para o tema não mudar conforme o dia em que foi gerado).
 pub fn fix_calendar_date(month: u32, day: u32) {
     FIXED_DATE.store(month * 100 + day, std::sync::atomic::Ordering::Relaxed);
@@ -1378,37 +1378,37 @@ pub fn theme_entries() -> Vec<(Icon, &'static str, &'static [&'static str])> {
         (Icon::Files, "apps", &["system-file-manager", "org.gnome.Nautilus", "nautilus", "glove-files"]),
         (Icon::Terminal, "apps", &["utilities-terminal", "org.gnome.Terminal", "org.gnome.Ptyxis", "org.gnome.Console", "glove-term"]),
         (Icon::Globe, "apps", &["internet-web-browser"]),
-        (Icon::Jangada, "apps", &["jangada", "web-browser", "glove-navegador"]),
+        (Icon::Jangada, "apps", &["jangada", "web-browser", "glove-browser"]),
         (Icon::TextEditor, "apps", &["accessories-text-editor", "org.gnome.TextEditor", "gedit", "glove-edit"]),
         (Icon::Calculator, "apps", &["accessories-calculator", "org.gnome.Calculator", "glove-calc"]),
         (Icon::Settings, "apps", &["preferences-system", "preferences-desktop", "org.gnome.Settings", "gnome-control-center", "glove-prefs"]),
         (Icon::Clock(10, 9), "apps", &["preferences-system-time", "org.gnome.clocks", "glove-clock"]),
-        (Icon::Mail, "apps", &["mail-client", "internet-mail", "org.gnome.Evolution", "thunderbird", "glove-correio"]),
+        (Icon::Mail, "apps", &["mail-client", "internet-mail", "org.gnome.Evolution", "thunderbird", "glove-mail"]),
         (Icon::Notes, "apps", &["accessories-notes", "org.gnome.Notes", "glove-notes"]),
-        (Icon::Contacts, "apps", &["x-office-address-book", "org.gnome.Contacts", "glove-contatos"]),
-        (Icon::Calendar, "apps", &["x-office-calendar", "org.gnome.Calendar", "glove-agenda"]),
+        (Icon::Contacts, "apps", &["x-office-address-book", "org.gnome.Contacts", "glove-contacts"]),
+        (Icon::Calendar, "apps", &["x-office-calendar", "org.gnome.Calendar", "glove-calendar"]),
         (Icon::Search, "apps", &["system-search", "glove-find"]),
         (Icon::Chars, "apps", &["accessories-character-map", "org.gnome.Characters", "glove-chars"]),
         (Icon::Camera, "apps", &["applets-screenshooter", "org.gnome.Screenshot", "glove-shot"]),
         (Icon::Monitor, "apps", &["utilities-system-monitor", "org.gnome.SystemMonitor", "gnome-system-monitor", "glove-monitor"]),
         (Icon::Chess, "apps", &["gnome-chess", "org.gnome.Chess", "glove-chess"]),
-        (Icon::Music, "apps", &["multimedia-audio-player", "org.gnome.Music", "rhythmbox", "glove-musica"]),
+        (Icon::Music, "apps", &["multimedia-audio-player", "org.gnome.Music", "rhythmbox", "glove-music"]),
         (Icon::Video, "apps", &["multimedia-video-player", "org.gnome.Totem", "totem", "glove-video"]),
-        (Icon::Logs, "apps", &["logviewer", "org.gnome.Logs", "glove-registros"]),
+        (Icon::Logs, "apps", &["logviewer", "org.gnome.Logs", "glove-console"]),
         (Icon::Info, "apps", &["dialog-information", "glove-info"]),
-        (Icon::Help, "apps", &["help-browser", "help-contents", "org.gnome.Yelp", "glove-ajuda"]),
-        (Icon::Dictionary, "apps", &["accessories-dictionary", "org.gnome.Dictionary", "glove-dicionario"]),
-        (Icon::FontBook, "apps", &["preferences-desktop-font", "org.gnome.font-viewer", "glove-fontes"]),
-        (Icon::Keychain, "apps", &["dialog-password", "seahorse", "org.gnome.seahorse.Application", "glove-chaves"]),
-        (Icon::NetUtility, "apps", &["network-workgroup", "glove-utilrede"]),
+        (Icon::Help, "apps", &["help-browser", "help-contents", "org.gnome.Yelp", "glove-help"]),
+        (Icon::Dictionary, "apps", &["accessories-dictionary", "org.gnome.Dictionary", "glove-dictionary"]),
+        (Icon::FontBook, "apps", &["preferences-desktop-font", "org.gnome.font-viewer", "glove-fonts"]),
+        (Icon::Keychain, "apps", &["dialog-password", "seahorse", "org.gnome.seahorse.Application", "glove-keychain"]),
+        (Icon::NetUtility, "apps", &["network-workgroup", "glove-netutil"]),
         (Icon::Viewer, "apps", &["image-viewer", "org.gnome.eog", "org.gnome.Loupe", "eog", "glove-view"]),
         (Icon::DiskUtility, "apps", &["gnome-disks", "org.gnome.DiskUtility", "glove-disks"]),
-        (Icon::Archiver, "apps", &["file-roller", "org.gnome.FileRoller", "glove-arquivo"]),
-        (Icon::Backup, "apps", &["deja-dup", "org.gnome.DejaDup", "glove-copias"]),
-        (Icon::AppCenter, "apps", &["system-software-install", "org.gnome.Software", "gnome-software", "glove-central"]),
-        (Icon::Photos, "apps", &["shotwell", "org.gnome.Shotwell", "gnome-photos", "org.gnome.Photos", "glove-fotos"]),
-        (Icon::Recorder, "apps", &["audio-input-microphone", "org.gnome.SoundRecorder", "glove-gravador"]),
-        (Icon::Messages, "apps", &["internet-chat", "org.gnome.Polari", "hexchat", "glove-mensagens"]),
+        (Icon::Archiver, "apps", &["file-roller", "org.gnome.FileRoller", "glove-archive"]),
+        (Icon::Backup, "apps", &["deja-dup", "org.gnome.DejaDup", "glove-backup"]),
+        (Icon::AppCenter, "apps", &["system-software-install", "org.gnome.Software", "gnome-software", "glove-appcenter"]),
+        (Icon::Photos, "apps", &["shotwell", "org.gnome.Shotwell", "gnome-photos", "org.gnome.Photos", "glove-photos"]),
+        (Icon::Recorder, "apps", &["audio-input-microphone", "org.gnome.SoundRecorder", "glove-voicerec"]),
+        (Icon::Messages, "apps", &["internet-chat", "org.gnome.Polari", "hexchat", "glove-messages"]),
         (Icon::Window, "apps", &["application-default-icon", "application-x-executable"]),
         // Lugares
         (Icon::Folder, "places", &["folder", "inode-directory", "folder-remote"]),

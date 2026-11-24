@@ -148,7 +148,7 @@ impl Ui<'_> {
             });
         });
         if add_printer {
-            let _ = std::process::Command::new("glove-prefs").arg("impressao").spawn();
+            let _ = std::process::Command::new("glove-prefs").arg("printing").spawn();
         }
         // Cópias
         y += 36.0;
