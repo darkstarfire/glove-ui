@@ -108,6 +108,13 @@ pub trait App: 'static {
     fn paints_background(&self) -> bool {
         false
     }
+    /// Backend GTK: uma tecla apertada com o teclado num widget do sistema da janela
+    /// (`Ui::native_host`), no formato dos atalhos ("Ctrl+T"). Devolva verdadeiro para
+    /// ficar com ela (o widget não a recebe); a janela é redesenhada.
+    fn native_key(&mut self, combo: &str) -> bool {
+        let _ = combo;
+        false
+    }
 }
 
 /// Hora local: (ano, mês 1-12, dia, dia da semana 0=domingo, hora, minuto, segundo).
@@ -241,7 +248,7 @@ fn floor_size(chosen: (Option<u32>, Option<u32>), min: (u32, u32)) -> (u32, u32)
 
 /// Janelas sem a barra de título do Glove: o app desenha a própria moldura
 /// (ex.: Lembretes) e usa `ui.start_move()` para arrastar.
-static OWN_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static OWN_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Chame antes de `run` para o app desenhar a própria moldura.
 pub fn use_own_frame() {
@@ -251,7 +258,7 @@ pub fn use_own_frame() {
 /// Só a primeira janela (número 0) sem a barra de título do Glove: o app põe os botões
 /// da janela na barra de ferramentas (`Ui::window_buttons`) e arrasta por ela
 /// (`Ui::toolbar_drag`). As outras janelas (Preferências etc.) seguem com a barra.
-static OWN_FRAME_MAIN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static OWN_FRAME_MAIN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Chame antes de `run`: a janela principal desenha a própria moldura.
 pub fn use_own_frame_main() {

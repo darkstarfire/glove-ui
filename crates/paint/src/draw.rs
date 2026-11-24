@@ -953,6 +953,25 @@ impl Canvas {
         }
     }
 
+    /// Apaga um retângulo (fica transparente): o buraco por onde aparece o que está
+    /// embaixo da janela do kit (ex.: a página de um navegador, num widget do sistema).
+    pub fn clear_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        let mut k = Fp::new(91);
+        for v in [x, y, w, h] {
+            k.f(v);
+        }
+        if self.note(self.px_box(x, y, w, h, 0.0), k.finish()) || !self.visible(x, y, w, h) {
+            return;
+        }
+        let mut paint = solid(Color::TRANSPARENT);
+        paint.blend_mode = tiny_skia::BlendMode::Clear;
+        paint.anti_alias = false;
+        if let Some(r) = Rect::from_xywh(x, y, w, h) {
+            let t = self.t();
+            self.pm.fill_rect(r, &paint, t, None);
+        }
+    }
+
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, paint: &Paint) {
         let mapped = self.remap_paint(paint);
         let paint = mapped.as_ref().unwrap_or(paint);

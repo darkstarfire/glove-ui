@@ -14,3 +14,9 @@ libc = "0.2.191"
 zune-jpeg = "0.5.15"
 image-webp = "0.2.4"
 miniz_oxide = "0.8"
+# Backend GTK 4 (só quem pede: a Jangada, com a página do WebKitGTK na janela).
+gtk4 = { version = "0.11", features = ["v4_14"], optional = true }
+glib-unix = { version = "0.22", optional = true }
+
+[features]
+gtk = ["dep:gtk4", "dep:glib-unix"]

@@ -305,6 +305,9 @@ pub struct Input {
     pub middle_released: bool,
     /// Rolagem para os lados neste quadro (positivo = para a direita).
     pub scroll_x: f32,
+    /// O teclado está num widget do sistema dentro da janela (backend GTK: a página de
+    /// um navegador), não nos do kit.
+    pub native_focus: bool,
 }
 
 impl Input {
@@ -526,6 +529,12 @@ pub struct Memory {
     pub(crate) watch_req: Vec<std::os::fd::RawFd>,
     /// Seta de rolagem apertada: (id, próxima repetição).
     scroll_repeat: Option<(Id, std::time::Instant)>,
+    /// Backend GTK: onde o app põe os widgets do sistema (embaixo do desenho do kit).
+    #[cfg(feature = "gtk")]
+    pub(crate) native_host: Option<crate::gtk_platform::NativeHost>,
+    /// Backend GTK fora do Glove: o menu de contexto pedido neste quadro (onde e os itens).
+    #[cfg(feature = "gtk")]
+    pub(crate) ctx_req: Option<((f32, f32), Vec<crate::menu::MenuItem>)>,
     /// Superfícies de rascunho reaproveitadas (recorte de áreas roláveis).
     scratch: HashMap<Id, Canvas>,
     /// Quais foram usadas neste quadro (as outras são liberadas no fim).
@@ -553,6 +562,22 @@ impl Memory {
         self.open_windows.clear();
         self.redraw_all = false;
         self.watch_req.clear();
+        #[cfg(feature = "gtk")]
+        {
+            self.ctx_req = None;
+        }
+    }
+
+    /// Algum campo do kit está com o cursor?
+    #[cfg_attr(not(feature = "gtk"), allow(dead_code))]
+    pub(crate) fn focused(&self) -> bool {
+        self.focus.is_some()
+    }
+
+    /// O teclado foi para fora dos widgets do kit: nenhum campo fica com o cursor.
+    #[cfg_attr(not(feature = "gtk"), allow(dead_code))]
+    pub(crate) fn clear_focus(&mut self) {
+        self.focus = None;
     }
 
     pub(crate) fn with_app_icon(icon: Icon) -> Self {
@@ -909,7 +934,16 @@ impl<'a> Ui<'a> {
     /// escolhido chega em `menu_actions()` (o id dele). Devolve falso fora do Glove (sem
     /// a barra de menu dele): aí o app desenha o menu dentro da janela, como antes.
     pub fn context_menu(&mut self, at: (f32, f32), items: &[crate::menu::MenuItem]) -> bool {
-        if !native_menus() || items.is_empty() {
+        if items.is_empty() {
+            return false;
+        }
+        // Backend GTK fora do Glove: um menu do GTK no lugar.
+        #[cfg(feature = "gtk")]
+        if !native_menus() {
+            self.mem.ctx_req = Some((at, items.to_vec()));
+            return true;
+        }
+        if !native_menus() {
             return false;
         }
         let mut text = format!("CTX\t{}\t{}\n", at.0, at.1);
@@ -1775,6 +1809,18 @@ impl<'a> Ui<'a> {
     /// Algum campo de texto está com o cursor?
     pub fn has_focus(&self) -> bool {
         self.mem.focus.is_some()
+    }
+
+    /// O teclado está num widget do sistema dentro da janela (backend GTK), não no kit.
+    pub fn native_focus(&self) -> bool {
+        self.input.native_focus
+    }
+
+    /// Backend GTK: o lugar dos widgets do sistema desta janela (embaixo do desenho do
+    /// kit; aparecem onde o app apaga o desenho com `Canvas::clear_rect`).
+    #[cfg(feature = "gtk")]
+    pub fn native_host(&self) -> Option<crate::gtk_platform::NativeHost> {
+        self.mem.native_host.clone()
     }
 
     pub fn text_field(&mut self, value: &mut String, width: f32) -> bool {

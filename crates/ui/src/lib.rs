@@ -12,7 +12,10 @@ pub mod image;
 pub mod menu;
 pub mod print;
 mod panels;
+#[cfg_attr(feature = "gtk", allow(dead_code))]
 mod platform;
+#[cfg(feature = "gtk")]
+mod gtk_platform;
 mod text;
 pub mod ui;
 pub use panels::{ColorPanel, FontPanel};
@@ -23,7 +26,15 @@ pub use glove_paint as paint;
 pub use glove_config as config;
 /// Traduções (a macro `tr!`), o idioma em uso e o separador decimal.
 pub use glove_config::{idioma, tr, tr_dyn, virgula};
-pub use platform::{app_icon, local_time, run, theme_from_config, use_own_frame, use_own_frame_main, App, WindowOptions};
+pub use platform::{app_icon, local_time, theme_from_config, use_own_frame, use_own_frame_main, App, WindowOptions};
+#[cfg(not(feature = "gtk"))]
+pub use platform::run;
+/// Backend GTK 4 (feature `gtk`): as janelas do kit são janelas do GTK, com lugar para
+/// widgets do sistema embaixo do desenho (`Ui::native_host`).
+#[cfg(feature = "gtk")]
+pub use gtk_platform::{redraw_soon, run, NativeHost};
+#[cfg(feature = "gtk")]
+pub use gtk4 as gtk;
 pub use menu::{Menu, MenuItem};
 pub use filebrowser::{Choice, FileBrowser};
 pub use ui::{disclosure_triangle, AlertKind, Column, Rect, TableResponse, TableRow, TableState, TableStyle, Ticks, Ui, SCROLLBAR_W, SEARCH_H, SEGMENT_H, SEGMENT_W, TABLE_HEADER_H, TabAction, TAB_STRIP_H};
