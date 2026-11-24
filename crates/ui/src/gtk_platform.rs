@@ -1058,6 +1058,10 @@ impl<A: App> State<A> {
             frame_damage(&mut w.prev, canvas.data(), pw, ph, u)
         };
         let novo = w.pintura.imp().px.get() != (pw, ph);
+        if std::env::var_os("GLOVE_PROF").is_some() {
+            let px: i32 = damage.iter().map(|r| (r[2] - r[0]) * (r[3] - r[1])).sum();
+            eprintln!("PROF janela={} pintou={} áreas mudou={}px", w.id, rects.len(), px);
+        }
         if !damage.is_empty() || novo {
             w.pintura.mostrar(&canvas, &damage, w.scale);
         }
