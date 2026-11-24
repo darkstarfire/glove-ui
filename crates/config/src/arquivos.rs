@@ -43,7 +43,7 @@ pub struct Files {
 impl Default for Files {
     fn default() -> Self {
         Self {
-            new_window: "inicio".into(),
+            new_window: "home".into(),
             labels: DEFAULT_LABELS.iter().map(|s| s.to_string()).collect(),
             sidebar_hidden: Vec::new(),
             show_extensions: true,
@@ -51,7 +51,7 @@ impl Default for Files {
             icon_size: 64,
             text_size: 12,
             label_right: false,
-            arrange: "nome".into(),
+            arrange: "name".into(),
             background: String::new(),
             servers: Vec::new(),
             recent_servers: Vec::new(),
@@ -73,9 +73,9 @@ impl Files {
     pub fn new_window_dir(&self) -> PathBuf {
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| "/".into()));
         match self.new_window.as_str() {
-            "mesa" => crate::desktop_dir(),
-            "documentos" => user_dir("DOCUMENTS").unwrap_or(home),
-            "computador" => PathBuf::from("/"),
+            "desktop" => crate::desktop_dir(),
+            "documents" => user_dir("DOCUMENTS").unwrap_or(home),
+            "computer" => PathBuf::from("/"),
             _ => home,
         }
     }

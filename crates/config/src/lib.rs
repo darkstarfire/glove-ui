@@ -44,15 +44,15 @@ impl Default for SearchPrefs {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Media {
-    /// Ao inserir um CD ou DVD de dados: "abrir" (no Arquivos) ou "nada".
+    /// Ao inserir um CD ou DVD de dados: "open" (no Arquivos) ou "nothing".
     pub data_disc: String,
-    /// Ao inserir um DVD de vídeo: "video" (no Vídeo), "abrir" (no Arquivos) ou "nada".
+    /// Ao inserir um DVD de vídeo: "video" (no Vídeo), "open" (no Arquivos) ou "nothing".
     pub video_dvd: String,
 }
 
 impl Default for Media {
     fn default() -> Self {
-        Self { data_disc: "abrir".into(), video_dvd: "video".into() }
+        Self { data_disc: "open".into(), video_dvd: "video".into() }
     }
 }
 
@@ -69,7 +69,7 @@ pub struct Desk {
     /// Mostrar o disco do sistema e os pendrives/discos externos.
     pub show_disks: bool,
     pub show_removable: bool,
-    /// Manter organizado por: "" (livre), "nome", "data", "tamanho" ou "tipo".
+    /// Manter organizado por: "" (livre), "name", "date", "size" ou "kind".
     pub arrange: String,
     /// Clicar numa área livre da mesa mostra a mesa (afasta as janelas, como o F11).
     pub click_shows_desktop: bool,
@@ -212,7 +212,7 @@ pub struct Sound {
 
 impl Default for Sound {
     fn default() -> Self {
-        Self { alert: "Vidro".into(), alert_volume: 0.7, volume_feedback: true, menu_extra: true }
+        Self { alert: "glass".into(), alert_volume: 0.7, volume_feedback: true, menu_extra: true }
     }
 }
 
@@ -232,19 +232,19 @@ pub struct Dock {
     pub size: u32,
     pub magnification: bool,
     pub max_size: u32,
-    /// "embaixo", "esquerda" ou "direita".
+    /// "bottom", "left" ou "right".
     pub position: String,
     /// Some e reaparece quando o mouse encosta na borda.
     pub autohide: bool,
     /// Ícone pula enquanto o app abre.
     pub animate_launch: bool,
-    /// Efeito de minimizar: "escala" (o único por enquanto).
+    /// Efeito de minimizar: "scale" ou "genie".
     pub minimize_effect: String,
 }
 
 impl Default for Dock {
     fn default() -> Self {
-        Self { size: 56, magnification: true, max_size: 80, position: "embaixo".into(), autohide: false, animate_launch: true, minimize_effect: "escala".into() }
+        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, animate_launch: true, minimize_effect: "scale".into() }
     }
 }
 
@@ -363,8 +363,8 @@ pub struct Appearance {
     #[serde(default)]
     pub system_theme: bool,
     /// O tema de cada tela do sistema (Preferências ▸ Telas do Sistema): "" = segue a
-    /// opção acima (a aparência, se ligada; senão o clássico), "aparencia" = sempre a
-    /// aparência escolhida, ou o nome de um tema ("claro", "moderno-escuro"…).
+    /// opção acima (a aparência, se ligada; senão o clássico), "appearance" = sempre a
+    /// aparência escolhida, ou o nome de um tema ("light", "modern-dark"…).
     /// A sessão: abertura da sessão, bloqueio de tela e saída.
     #[serde(default)]
     pub screen_session: String,
@@ -403,7 +403,7 @@ pub fn anim(d: std::time::Duration) -> std::time::Duration {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { highlight: "azul".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false, system_theme: false, screen_session: String::new(), screen_login: String::new(), screen_boot: String::new() }
+        Self { highlight: "blue".into(), double_click_minimizes: false, scroll_jump: false, recent_apps: 10, recent_docs: 10, icon_theme: String::new(), reduce_effects: false, system_theme: false, screen_session: String::new(), screen_login: String::new(), screen_boot: String::new() }
     }
 }
 
@@ -450,14 +450,14 @@ pub fn desktop_icon(app_id: &str) -> Option<String> {
 
 /// Cores de destaque do texto selecionado: (id, nome, r, g, b).
 pub const HIGHLIGHTS: [(&str, &str, u8, u8, u8); 8] = [
-    ("azul", "Azul", 181, 213, 255),
-    ("grafite", "Grafite", 199, 208, 219),
-    ("prata", "Prata", 214, 214, 220),
-    ("dourado", "Dourado", 252, 236, 152),
-    ("laranja", "Laranja", 255, 210, 160),
-    ("roxo", "Roxo", 226, 200, 245),
-    ("vermelho", "Vermelho", 255, 190, 190),
-    ("verde", "Verde", 196, 240, 180),
+    ("blue", "Azul", 181, 213, 255),
+    ("graphite", "Grafite", 199, 208, 219),
+    ("silver", "Prata", 214, 214, 220),
+    ("gold", "Dourado", 252, 236, 152),
+    ("orange", "Laranja", 255, 210, 160),
+    ("purple", "Roxo", 226, 200, 245),
+    ("red", "Vermelho", 255, 190, 190),
+    ("green", "Verde", 196, 240, 180),
 ];
 
 /// Cor de destaque pelo id (azul se não conhecer).
@@ -466,7 +466,7 @@ pub fn highlight_rgb(id: &str) -> (u8, u8, u8) {
     (h.2, h.3, h.4)
 }
 
-/// Cantos ativos: "todas", "app" ou "mesa" (Exposé); vazio = nada.
+/// Cantos ativos: "all", "app" ou "desktop" (Exposé), "dashboard", "apps", "screensaver"…; vazio = nada.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HotCorners {
@@ -636,16 +636,16 @@ impl Config {
         match self.screen_choice(which) {
             "" if self.appearance.system_theme => self.theme.clone(),
             "" => {
-                if self.theme.starts_with("moderno") { "claro".into() } else { self.theme.clone() }
+                if self.theme.starts_with("modern") { "light".into() } else { self.theme.clone() }
             }
-            "aparencia" => self.theme.clone(),
+            "appearance" => self.theme.clone(),
             t => t.to_string(),
         }
     }
 
     /// O papel de parede de um monitor (pelo nome do conector).
     pub fn wallpaper_for(&self, output: &str) -> &str {
-        if self.wallpaper_mode == "por_tela" {
+        if self.wallpaper_mode == "per-display" {
             if let Some(w) = self.wallpapers.get(output).filter(|w| !w.is_empty()) {
                 return w;
             }
@@ -666,12 +666,12 @@ pub struct Monitor {
     pub scale: f64,
     /// Menu de monitores (brilho, resolução) na barra de menu.
     pub menu_extra: bool,
-    /// Com mais de um monitor: "estender" (mesa maior), "espelhar" (a mesma
-    /// imagem) ou "um" (só o principal).
+    /// Com mais de um monitor: "extend" (mesa maior), "mirror" (a mesma
+    /// imagem) ou "single" (só o principal).
     #[serde(default = "default_arrangement")]
     pub arrangement: String,
-    /// Onde ficam os outros monitores, vistos do principal: "direita",
-    /// "esquerda" ou "abaixo".
+    /// Onde ficam os outros monitores, vistos do principal: "right",
+    /// "left" ou "below".
     #[serde(default = "default_side")]
     pub side: String,
     /// Resolução e escala dos outros monitores (os que não são o principal), pelo
@@ -697,11 +697,11 @@ pub struct OtherMonitor {
 }
 
 fn default_arrangement() -> String {
-    "estender".into()
+    "extend".into()
 }
 
 fn default_side() -> String {
-    "direita".into()
+    "right".into()
 }
 
 impl Default for Monitor {
@@ -802,7 +802,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("expose_app", "Exposé: janelas do app"),
     ("expose_desktop", "Exposé: mostrar a mesa"),
     ("dashboard", "Painel de Widgets"),
-    ("grade", "Todos os Apps"),
+    ("apps", "Todos os Apps"),
     ("desk_prev", "Mesa virtual anterior"),
     ("desk_next", "Próxima mesa virtual"),
     ("desk_move_prev", "Levar a janela para a mesa anterior"),
@@ -833,18 +833,17 @@ pub fn action_label(id: &str) -> &str {
 #[serde(default)]
 pub struct Config {
     pub theme: String,
-    /// "ondas", "aurora", "liso", "cor:R,G,B" ou o caminho de uma imagem (PNG,
+    /// "waves", "aurora", "plain", "color:R,G,B" ou o caminho de uma imagem (PNG,
     /// JPEG, WebP) ou de um vídeo/GIF (papel animado). Vale para todos os monitores,
-    /// menos no modo "por_tela" para os que têm o seu em `wallpapers`.
+    /// menos no modo "per-display" para os que têm o seu em `wallpapers`.
     pub wallpaper: String,
-    /// Com mais de um monitor: "igual" (a mesma em cada um), "por_tela" (um papel
+    /// Com mais de um monitor: "same" (a mesma em cada um), "per-display" (um papel
     /// para cada monitor) ou "panorama" (uma imagem só cobrindo todos, pela posição
     /// deles: lado a lado, um em cima do outro...).
     pub wallpaper_mode: String,
-    /// Como a imagem ocupa a tela: "preencher", "ajustar", "esticar", "centralizar"
-    /// ou "lado_a_lado".
+    /// Como a imagem ocupa a tela: "fill", "fit", "stretch", "center" ou "tile".
     pub wallpaper_fit: String,
-    /// Modo "por_tela": o papel de cada monitor, pelo nome do conector.
+    /// Modo "per-display": o papel de cada monitor, pelo nome do conector.
     pub wallpapers: std::collections::BTreeMap<String, String>,
     /// Papel animado (vídeo ou GIF).
     pub wallpaper_anim: WallpaperAnim,
@@ -869,9 +868,9 @@ pub struct Config {
     #[serde(default)]
     pub saver: Saver,
     /// Navegador do glove-browser ("" = pela memória: NetSurf ou Firefox).
-    #[serde(default)]
-    pub navegador: String,
-    /// Ao conectar um pendrive ou disco: "abrir" (no Arquivos) ou "nada".
+    #[serde(default, alias = "navegador")]
+    pub browser: String,
+    /// Ao conectar um pendrive ou disco: "open" (no Arquivos) ou "nothing".
     #[serde(default = "default_removable")]
     pub removable_action: String,
     /// Menu Wi-Fi na barra de menu.
@@ -934,7 +933,7 @@ pub fn default_prefs_favorites() -> Vec<String> {
 pub const DOCK_REV: u32 = 10;
 
 /// O item do Dock que abre a grade com todos os apps (o compositor a mostra; não é um programa).
-pub const GRADE_ID: &str = "glove.Grade";
+pub const ALL_APPS_ID: &str = "glove.AllApps";
 /// O papel de parede do Glove OS (a luva com o nome), onde o pacote o instalou
 /// (`share/glove/papeis/glove-os.png`, ao lado da pasta dos programas). É o padrão.
 pub fn glove_os_wallpaper() -> Option<String> {
@@ -952,11 +951,11 @@ pub fn glove_os_wallpaper() -> Option<String> {
 }
 
 fn default_wallpaper() -> String {
-    glove_os_wallpaper().unwrap_or_else(|| "ondas".into())
+    glove_os_wallpaper().unwrap_or_else(|| "waves".into())
 }
 
 fn default_removable() -> String {
-    "abrir".into()
+    "open".into()
 }
 
 fn yes() -> bool {
@@ -985,7 +984,7 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
         ("expose_app", "F10"),
         ("expose_desktop", "F11"),
         ("dashboard", "F12"),
-        ("grade", "F4"),
+        ("apps", "F4"),
         ("desk_prev", "Ctrl+Super+Left"),
         ("desk_next", "Ctrl+Super+Right"),
         ("desk_move_prev", "Ctrl+Super+Shift+Left"),
@@ -1041,7 +1040,7 @@ const OLD_PROGRAMS: [(&str, &str); 23] = [
 ];
 
 /// The window ids that went with them: (then, now).
-const OLD_WINDOW_IDS: [(&str, &str); 23] = [
+const OLD_WINDOW_IDS: [(&str, &str); 24] = [
     ("glove.Agenda", "glove.Calendar"),
     ("glove.Ajuda", "glove.Help"),
     ("glove.Arquivo", "glove.Archive"),
@@ -1055,6 +1054,7 @@ const OLD_WINDOW_IDS: [(&str, &str); 23] = [
     ("glove.Escolher", "glove.Chooser"),
     ("glove.Fontes", "glove.Fonts"),
     ("glove.Fotos", "glove.Photos"),
+    ("glove.Grade", "glove.AllApps"),
     ("glove.Gravacao", "glove.ScreenRec"),
     ("glove.Gravador", "glove.VoiceRec"),
     ("glove.Instalador", "glove.Installer"),
@@ -1066,6 +1066,12 @@ const OLD_WINDOW_IDS: [(&str, &str); 23] = [
     ("glove.Senha", "glove.Auth"),
     ("glove.UtilRede", "glove.NetUtil"),
 ];
+
+/// The appearances: (then, now).
+const OLD_THEMES: [(&str, &str); 5] = [("claro", "light"), ("listras", "pinstripe"), ("grafite", "graphite"), ("moderno", "modern"), ("moderno-escuro", "modern-dark")];
+
+/// What a hot corner does: (then, now).
+const OLD_CORNERS: [(&str, &str); 4] = [("todas", "all"), ("mesa", "desktop"), ("painel", "dashboard"), ("protetor", "screensaver")];
 
 /// The Preferences panes kept as favorites: (then, now).
 const OLD_PANES: [(&str, &str); 22] = [
@@ -1096,7 +1102,7 @@ const OLD_PANES: [(&str, &str); 22] = [
 pub fn default_dock_apps() -> Vec<DockApp> {
     vec![
         app(tr!("Arquivos"), "files", "glove-files", "glove.Files"),
-        app(tr!("Todos os Apps"), "apps-grid", "", GRADE_ID),
+        app(tr!("Todos os Apps"), "apps-grid", "", ALL_APPS_ID),
         app("Terminal", "terminal", "glove-term", "glove.Terminal"),
         app("Jangada", "jangada", "glove-browser", "glove.Browser"),
         app(tr!("Correio"), "mail", "glove-mail", "glove.Mail"),
@@ -1156,17 +1162,17 @@ pub fn known_app(dock: &[DockApp], app_id: &str) -> Option<DockApp> {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            theme: "claro".into(),
+            theme: "light".into(),
             wallpaper: default_wallpaper(),
-            wallpaper_mode: "igual".into(),
-            wallpaper_fit: "preencher".into(),
+            wallpaper_mode: "same".into(),
+            wallpaper_fit: "fill".into(),
             wallpapers: Default::default(),
             wallpaper_anim: WallpaperAnim::default(),
             wallpaper_favorites: Vec::new(),
             terminal: default_terminal(),
             terminal_font: String::new(),
             terminal_font_size: 12.0,
-            terminal_theme: "basico".into(),
+            terminal_theme: "basic".into(),
             dock: Dock::default(),
             keyboard: Keyboard::default(),
             pointer: Pointer::default(),
@@ -1186,7 +1192,7 @@ impl Default for Config {
             access: Access::default(),
             saver: Saver::default(),
             removable_action: default_removable(),
-            navegador: String::new(),
+            browser: String::new(),
             dock_rev: DOCK_REV,
             prefs_favorites: default_prefs_favorites(),
             x11_apps: true,
@@ -1230,9 +1236,10 @@ impl Config {
                 if c.shortcuts.is_empty() {
                     c.shortcuts = default_shortcuts();
                 }
+                // First of all: the shortcuts and the rest are looked up by today's names.
+                let renamed = c.rename_old_names();
                 let added = c.add_missing_shortcuts();
                 let gel = c.drop_removed_gel();
-                let renamed = c.rename_old_names();
                 if c.migrate() || added || gel || renamed {
                     let _ = c.save();
                 }
@@ -1308,6 +1315,10 @@ impl Config {
                 a.app_id = new.to_string();
                 changed = true;
             }
+            if a.icon == "chaves" {
+                a.icon = "keychain".into();
+                changed = true;
+            }
             // The program is the first word of the command (maybe with a folder in front).
             let command: Vec<String> = a
                 .command
@@ -1334,6 +1345,68 @@ impl Config {
                 changed = true;
             }
         }
+        // The stored choices that were Portuguese words up to Glove 0.15.
+        let mut word = |value: &mut String, table: &[(&str, &str)]| {
+            if let Some((_, new)) = table.iter().find(|(old, _)| value == old) {
+                *value = new.to_string();
+                changed = true;
+            }
+        };
+        word(&mut self.theme, &OLD_THEMES);
+        for screen in [&mut self.appearance.screen_session, &mut self.appearance.screen_login, &mut self.appearance.screen_boot] {
+            word(screen, &OLD_THEMES);
+            word(screen, &[("aparencia", "appearance")]);
+        }
+        word(&mut self.appearance.highlight, &[("azul", "blue"), ("grafite", "graphite"), ("prata", "silver"), ("dourado", "gold"), ("laranja", "orange"), ("roxo", "purple"), ("vermelho", "red"), ("verde", "green")]);
+        word(&mut self.dock.position, &[("embaixo", "bottom"), ("esquerda", "left"), ("direita", "right")]);
+        word(&mut self.dock.minimize_effect, &[("escala", "scale"), ("genio", "genie")]);
+        word(&mut self.monitor.arrangement, &[("estender", "extend"), ("espelhar", "mirror"), ("um", "single")]);
+        word(&mut self.monitor.side, &[("direita", "right"), ("esquerda", "left"), ("abaixo", "below")]);
+        word(&mut self.saver.kind, &[("estrelas", "stars"), ("bolhas", "bubbles"), ("ondas", "waves"), ("relogio", "clock")]);
+        word(&mut self.sound.alert, &[("Gota", "drop"), ("Sino", "bell"), ("Vidro", "glass"), ("Bolha", "bubble"), ("Toque", "tap"), ("Sopro", "blow")]);
+        word(&mut self.terminal_theme, &[("basico", "basic"), ("oceano", "ocean"), ("grama", "grass"), ("novela", "novel"), ("areia", "red-sands"), ("noite", "night")]);
+        word(&mut self.wallpaper_mode, &[("igual", "same"), ("por_tela", "per-display")]);
+        word(&mut self.wallpaper_fit, &[("preencher", "fill"), ("ajustar", "fit"), ("esticar", "stretch"), ("centralizar", "center"), ("lado_a_lado", "tile")]);
+        for corner in [&mut self.hot_corners.top_left, &mut self.hot_corners.top_right, &mut self.hot_corners.bottom_left, &mut self.hot_corners.bottom_right] {
+            word(corner, &OLD_CORNERS);
+        }
+        for action in [&mut self.media.data_disc, &mut self.media.video_dvd, &mut self.removable_action] {
+            word(action, &[("abrir", "open"), ("nada", "nothing")]);
+        }
+        let arrange = [("nome", "name"), ("data", "date"), ("tamanho", "size"), ("tipo", "kind")];
+        word(&mut self.desk.arrange, &arrange);
+        word(&mut self.files.arrange, &arrange);
+        word(&mut self.files.new_window, &[("inicio", "home"), ("mesa", "desktop"), ("documentos", "documents"), ("computador", "computer")]);
+        // The sidebar places hidden in Files, and the shortcut that opens All Apps.
+        let places = [("disco", "disk"), ("mesa", "desktop"), ("inicio", "home"), ("aplicativos", "applications"), ("documentos", "documents"), ("imagens", "pictures"), ("musica", "music"), ("buscas", "smart-folders"), ("rede", "network")];
+        for place in &mut self.files.sidebar_hidden {
+            word(place, &places);
+        }
+        for shortcut in &mut self.shortcuts {
+            word(&mut shortcut.action, &[("grade", "apps")]);
+        }
+        // A program built with an older kit may have put its own "grade" back next to
+        // today's "apps": one of them is enough (the first, which is the one in use).
+        let mut seen = false;
+        let before = self.shortcuts.len();
+        self.shortcuts.retain(|s| s.action != "apps" || !std::mem::replace(&mut seen, true));
+        changed |= self.shortcuts.len() != before;
+        // The wallpapers drawn by code and the plain colors ("cor:R,G,B").
+        let mut wallpaper = |value: &mut String| {
+            let new = match value.as_str() {
+                "ondas" => "waves".to_string(),
+                "liso" => "plain".to_string(),
+                v => match v.strip_prefix("cor:") {
+                    Some(rgb) => format!("color:{rgb}"),
+                    None => return,
+                },
+            };
+            *value = new;
+            changed = true;
+        };
+        wallpaper(&mut self.wallpaper);
+        self.wallpapers.values_mut().for_each(&mut wallpaper);
+        self.wallpaper_favorites.iter_mut().for_each(&mut wallpaper);
         changed
     }
 
@@ -1377,7 +1450,7 @@ impl Config {
         for d in defaults {
             if !self.dock_apps.iter().any(|a| a.app_id == d.app_id) {
                 // A grade de apps vai logo depois do Arquivos, como no Dock novo.
-                if d.app_id == GRADE_ID {
+                if d.app_id == ALL_APPS_ID {
                     let at = self.dock_apps.iter().position(|a| a.app_id == "glove.Files").map_or(0, |i| i + 1);
                     self.dock_apps.insert(at, d);
                 } else {
@@ -1419,8 +1492,8 @@ impl Config {
 /// do Glove (vazio: o padrão). Quem chama confere se o tema de ícones está instalado.
 pub fn icones_da_aparencia(tema: &str) -> &'static str {
     match tema {
-        "moderno" => "mide",
-        "moderno-escuro" => "mide-dark",
+        "modern" => "mide",
+        "modern-dark" => "mide-dark",
         _ => "",
     }
 }
@@ -1520,6 +1593,8 @@ mod tests {
             DockApp { name: "Arquivos".into(), icon: "files".into(), command: "glove-files".into(), app_id: "glove.Files".into() },
             // A word that only looks like a program further along the command stays.
             DockApp { name: "Editor".into(), icon: "editor".into(), command: "glove-edit glove-sair".into(), app_id: "glove.TextEditor".into() },
+            DockApp { name: "Todos os Apps".into(), icon: "apps-grid".into(), command: String::new(), app_id: "glove.Grade".into() },
+            DockApp { name: "Chaves".into(), icon: "chaves".into(), command: "glove-chaves".into(), app_id: "glove.Chaves".into() },
         ];
         c.prefs_favorites = vec!["rede".into(), "dock".into(), "datahora".into()];
         assert!(c.rename_old_names());
@@ -1527,9 +1602,53 @@ mod tests {
         assert_eq!((c.dock_apps[1].command.as_str(), c.dock_apps[1].app_id.as_str()), ("/usr/bin/glove-browser https://exemplo.com", "glove.Browser"));
         assert_eq!(c.dock_apps[2].command, "glove-files");
         assert_eq!(c.dock_apps[3].command, "glove-edit glove-sair");
+        assert_eq!(c.dock_apps[4].app_id, ALL_APPS_ID);
+        assert_eq!((c.dock_apps[5].icon.as_str(), c.dock_apps[5].command.as_str(), c.dock_apps[5].app_id.as_str()), ("keychain", "glove-keychain", "glove.Keychain"));
         assert_eq!(c.prefs_favorites, ["network", "dock", "date-time"]);
         // Nothing left to rename the second time.
         assert!(!c.rename_old_names());
+        // The stored choices that were Portuguese words.
+        let mut v = Config::default();
+        v.theme = "moderno-escuro".into();
+        v.appearance.screen_login = "aparencia".into();
+        v.appearance.highlight = "grafite".into();
+        v.dock.position = "esquerda".into();
+        v.monitor.arrangement = "espelhar".into();
+        v.monitor.side = "abaixo".into();
+        v.saver.kind = "estrelas".into();
+        v.sound.alert = "Vidro".into();
+        v.terminal_theme = "basico".into();
+        v.wallpaper = "cor:10,20,30".into();
+        v.wallpaper_mode = "por_tela".into();
+        v.wallpaper_fit = "lado_a_lado".into();
+        v.wallpapers.insert("eDP-1".into(), "ondas".into());
+        v.wallpapers.insert("HDMI-A-1".into(), "/home/x/foto.jpg".into());
+        v.hot_corners.top_left = "todas".into();
+        v.hot_corners.bottom_right = "protetor".into();
+        v.media.data_disc = "nada".into();
+        v.removable_action = "abrir".into();
+        v.desk.arrange = "tamanho".into();
+        v.files.new_window = "documentos".into();
+        v.files.sidebar_hidden = vec!["musica".into(), "downloads".into(), "buscas".into()];
+        v.shortcuts = vec![Shortcut { action: "grade".into(), keys: "F4".into() }];
+        assert!(v.rename_old_names());
+        assert_eq!(v.files.sidebar_hidden, ["music", "downloads", "smart-folders"]);
+        // The old name of the shortcut becomes today's, so no second one is added for it.
+        assert_eq!(v.shortcuts[0].action, "apps");
+        v.add_missing_shortcuts();
+        assert_eq!(v.shortcuts.iter().filter(|s| s.action == "apps").count(), 1);
+        // And an old one that came back beside today's goes away.
+        v.shortcuts.push(Shortcut { action: "grade".into(), keys: "F4".into() });
+        assert!(v.rename_old_names());
+        assert_eq!(v.shortcuts.iter().filter(|s| s.action == "apps" || s.action == "grade").count(), 1);
+        assert_eq!((v.theme.as_str(), v.appearance.screen_login.as_str(), v.appearance.highlight.as_str()), ("modern-dark", "appearance", "graphite"));
+        assert_eq!((v.dock.position.as_str(), v.monitor.arrangement.as_str(), v.monitor.side.as_str()), ("left", "mirror", "below"));
+        assert_eq!((v.saver.kind.as_str(), v.sound.alert.as_str(), v.terminal_theme.as_str()), ("stars", "glass", "basic"));
+        assert_eq!((v.wallpaper.as_str(), v.wallpaper_mode.as_str(), v.wallpaper_fit.as_str()), ("color:10,20,30", "per-display", "tile"));
+        assert_eq!((v.wallpapers["eDP-1"].as_str(), v.wallpapers["HDMI-A-1"].as_str()), ("waves", "/home/x/foto.jpg"));
+        assert_eq!((v.hot_corners.top_left.as_str(), v.hot_corners.bottom_right.as_str()), ("all", "screensaver"));
+        assert_eq!((v.media.data_disc.as_str(), v.removable_action.as_str(), v.desk.arrange.as_str(), v.files.new_window.as_str()), ("nothing", "open", "size", "documents"));
+        assert!(!v.rename_old_names());
         // Every default app and favorite pane already has today's name.
         let mut d = Config::default();
         d.dock_apps = default_dock_apps().into_iter().chain(extra_apps()).collect();
@@ -1606,6 +1725,19 @@ pub fn register_file_apps(bin_dir: &std::path::Path) {
     }
     let mut changed = false;
     let mut fresh = Vec::new();
+    // Up to Glove 0.14 two of these programs had Portuguese names: their entries go away,
+    // and the types that had them as the default app move to today's names.
+    for (old, new) in [("glove-fontes", "glove-fonts"), ("glove-musica", "glove-music")] {
+        changed |= std::fs::remove_file(dir.join(format!("{old}.desktop"))).is_ok();
+        for list in [dir.join("mimeapps.list"), dir.join("../../../.config/mimeapps.list")] {
+            if let Ok(text) = std::fs::read_to_string(&list) {
+                let renamed = text.replace(&format!("{old}.desktop"), &format!("{new}.desktop"));
+                if renamed != text {
+                    changed |= std::fs::write(&list, renamed).is_ok();
+                }
+            }
+        }
+    }
     for (bin, name, icon, mimes) in FILE_APPS {
         let exe = bin_dir.join(bin);
         if !exe.is_file() {
@@ -1665,15 +1797,15 @@ const ANSI_DARK: [(u8, u8, u8); 16] = [
 pub fn term_themes() -> Vec<TermTheme> {
     let t = |id, name, bg, fg, cursor, palette| TermTheme { id, name, bg, fg, cursor, palette };
     vec![
-        t("basico", "Básico", (255, 255, 255), (0, 0, 0), (60, 60, 60), ANSI_LIGHT),
+        t("basic", "Básico", (255, 255, 255), (0, 0, 0), (60, 60, 60), ANSI_LIGHT),
         t("pro", "Pro", (14, 14, 16), (230, 230, 230), (200, 200, 200), ANSI_DARK),
         t("homebrew", "Homebrew", (0, 0, 0), (40, 254, 20), (40, 254, 20), ANSI_DARK),
-        t("oceano", "Oceano", (34, 79, 188), (255, 255, 255), (220, 230, 255), ANSI_DARK),
-        t("grama", "Grama", (19, 119, 61), (255, 240, 165), (142, 40, 0), ANSI_DARK),
-        t("novela", "Novela", (223, 219, 195), (59, 35, 34), (58, 35, 34), ANSI_LIGHT),
-        t("areia", "Areia Vermelha", (122, 37, 30), (215, 201, 167), (255, 255, 255), ANSI_DARK),
+        t("ocean", "Oceano", (34, 79, 188), (255, 255, 255), (220, 230, 255), ANSI_DARK),
+        t("grass", "Grama", (19, 119, 61), (255, 240, 165), (142, 40, 0), ANSI_DARK),
+        t("novel", "Novela", (223, 219, 195), (59, 35, 34), (58, 35, 34), ANSI_LIGHT),
+        t("red-sands", "Areia Vermelha", (122, 37, 30), (215, 201, 167), (255, 255, 255), ANSI_DARK),
         t("manual", "Manual", (254, 244, 156), (0, 0, 0), (127, 127, 127), ANSI_LIGHT),
-        t("noite", "Noite", (30, 30, 46), (205, 214, 244), (245, 224, 220), ANSI_DARK),
+        t("night", "Noite", (30, 30, 46), (205, 214, 244), (245, 224, 220), ANSI_DARK),
     ]
 }
 

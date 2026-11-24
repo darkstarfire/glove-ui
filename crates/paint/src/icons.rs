@@ -233,7 +233,7 @@ impl Icon {
             "info" => Icon::Info,
             "help" => Icon::Help,
             "dictionary" => Icon::Dictionary,
-            "keychain" | "chaves" => Icon::Keychain,
+            "keychain" => Icon::Keychain,
             "fontbook" => Icon::FontBook,
             "mail" => Icon::Mail,
             "" | "generic" => Icon::Generic,

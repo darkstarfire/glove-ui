@@ -7,7 +7,7 @@ use crate::font::Fonts;
 use tiny_skia::PathBuilder;
 
 /// (id, nome) na ordem do painel.
-pub const SAVERS: [(&str, &str); 5] = [("aurora", "Aurora"), ("estrelas", "Estrelas"), ("bolhas", "Bolhas"), ("ondas", "Ondas"), ("relogio", "Relógio")];
+pub const SAVERS: [(&str, &str); 5] = [("aurora", "Aurora"), ("stars", "Estrelas"), ("bubbles", "Bolhas"), ("waves", "Ondas"), ("clock", "Relógio")];
 
 /// Número de 0 a 1 a partir de um inteiro (sempre o mesmo para o mesmo `i`).
 fn rnd(i: u32, salt: u32) -> f32 {
@@ -37,10 +37,10 @@ fn hue(h: f32, alpha: f32) -> tiny_skia::Color {
 /// para o protetor Relógio.
 pub fn draw(c: &mut Canvas, fonts: &Fonts, kind: &str, w: f32, h: f32, t: f32, clock: (&str, &str)) {
     match kind {
-        "estrelas" => stars(c, w, h, t),
-        "bolhas" => bubbles(c, w, h, t),
-        "ondas" => waves(c, w, h, t),
-        "relogio" => clock_saver(c, fonts, w, h, t, clock),
+        "stars" => stars(c, w, h, t),
+        "bubbles" => bubbles(c, w, h, t),
+        "waves" => waves(c, w, h, t),
+        "clock" => clock_saver(c, fonts, w, h, t, clock),
         _ => aurora(c, w, h, t),
     }
 }

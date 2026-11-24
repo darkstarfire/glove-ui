@@ -63,11 +63,11 @@ pub enum Fit {
 impl Fit {
     /// (ajuste, id na configuração, nome).
     pub const ALL: [(Fit, &'static str, &'static str); 5] = [
-        (Fit::Fill, "preencher", "Preencher a tela"),
-        (Fit::Fit, "ajustar", "Ajustar à tela"),
-        (Fit::Stretch, "esticar", "Esticar"),
-        (Fit::Center, "centralizar", "Centralizar"),
-        (Fit::Tile, "lado_a_lado", "Lado a lado"),
+        (Fit::Fill, "fill", "Preencher a tela"),
+        (Fit::Fit, "fit", "Ajustar à tela"),
+        (Fit::Stretch, "stretch", "Esticar"),
+        (Fit::Center, "center", "Centralizar"),
+        (Fit::Tile, "tile", "Lado a lado"),
     ];
 
     pub fn from_id(id: &str) -> Fit {
@@ -75,7 +75,7 @@ impl Fit {
     }
 
     pub fn id(self) -> &'static str {
-        Self::ALL.iter().find(|x| x.0 == self).map_or("preencher", |x| x.1)
+        Self::ALL.iter().find(|x| x.0 == self).map_or("fill", |x| x.1)
     }
 }
 
@@ -90,7 +90,7 @@ pub struct Span {
     pub y: f32,
 }
 
-/// Papel de parede por estilo: "ondas", "aurora", "liso", "cor:R,G,B" ou o caminho
+/// Papel de parede por estilo: "waves", "aurora", "plain", "color:R,G,B" ou o caminho
 /// de uma imagem (PNG, JPEG, WebP) ou de um vídeo/GIF (aqui, o primeiro quadro).
 pub fn render_style(theme: &Theme, style: &str, w: f32, h: f32, scale: f32) -> Option<Canvas> {
     render_part(theme, style, w, h, scale, Fit::Fill, None)
@@ -101,9 +101,9 @@ pub fn render_style(theme: &Theme, style: &str, w: f32, h: f32, scale: f32) -> O
 pub fn render_part(theme: &Theme, style: &str, w: f32, h: f32, scale: f32, fit: Fit, span: Option<Span>) -> Option<Canvas> {
     match style {
         "aurora" => aurora(theme, w, h, scale),
-        "liso" => plain(theme, w, h, scale),
-        "ondas" | "" => render(theme, w, h, scale),
-        c if c.starts_with("cor:") => solid_color(c, w, h, scale).or_else(|| render(theme, w, h, scale)),
+        "plain" => plain(theme, w, h, scale),
+        "waves" | "" => render(theme, w, h, scale),
+        c if c.starts_with("color:") => solid_color(c, w, h, scale).or_else(|| render(theme, w, h, scale)),
         path => {
             let file = if is_animated(path) { first_frame(path) } else { Some(PathBuf::from(path)) };
             file.and_then(|f| crate::image::decode(&f).ok()).and_then(|img| place(&img, w, h, scale, fit, span, theme.wallpaper[0])).or_else(|| render(theme, w, h, scale))
@@ -191,7 +191,7 @@ pub fn first_frame(path: &str) -> Option<PathBuf> {
 
 /// Cor sólida: "cor:R,G,B".
 pub fn parse_color(style: &str) -> Option<(u8, u8, u8)> {
-    let mut it = style.strip_prefix("cor:")?.split(',').map(|v| v.trim().parse::<u8>().ok());
+    let mut it = style.strip_prefix("color:")?.split(',').map(|v| v.trim().parse::<u8>().ok());
     Some((it.next()??, it.next()??, it.next()??))
 }
 
@@ -270,7 +270,7 @@ mod tests {
         // Esticar: a imagem inteira, achatada.
         let c = place(&img, 100.0, 100.0, 1.0, Fit::Stretch, None, bg).unwrap();
         assert_eq!((rgb(&c, 10, 10), rgb(&c, 90, 90)), ((255, 0, 0), (0, 0, 255)));
-        assert_eq!(Fit::from_id("lado_a_lado"), Fit::Tile);
+        assert_eq!(Fit::from_id("tile"), Fit::Tile);
         assert!(is_animated("/x/fundo.MP4") && is_animated("a.gif") && !is_animated("a.png"));
     }
 }

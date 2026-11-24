@@ -644,8 +644,8 @@ pub enum DockSide {
 impl DockSide {
     pub fn from_config(s: &str) -> Self {
         match s {
-            "esquerda" => Self::Left,
-            "direita" => Self::Right,
+            "left" => Self::Left,
+            "right" => Self::Right,
             _ => Self::Bottom,
         }
     }

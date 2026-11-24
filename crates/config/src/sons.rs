@@ -8,7 +8,19 @@ use std::path::PathBuf;
 const RATE: u32 = 22_050;
 
 /// Alertas que dá para escolher, na ordem do painel.
-pub const ALERTS: [&str; 6] = ["Gota", "Sino", "Vidro", "Bolha", "Toque", "Sopro"];
+pub const ALERTS: [&str; 6] = ["drop", "bell", "glass", "bubble", "tap", "blow"];
+
+/// The name of an alert as the person sees it (in the language in use).
+pub fn alert_label(id: &str) -> &'static str {
+    match id {
+        "drop" => crate::tr!("Gota"),
+        "bell" => crate::tr!("Sino"),
+        "glass" => crate::tr!("Vidro"),
+        "bubble" => crate::tr!("Bolha"),
+        "tap" => crate::tr!("Toque"),
+        _ => crate::tr!("Sopro"),
+    }
+}
 
 /// Amostras (-1 a 1) de um som pelo nome.
 fn synth(name: &str) -> Vec<f32> {
@@ -16,7 +28,7 @@ fn synth(name: &str) -> Vec<f32> {
     let t = |i: usize| i as f32 / RATE as f32;
     match name {
         // Gota: seno que desce depressa, com um estalo curto no começo.
-        "Gota" => (0..n(0.16))
+        "drop" => (0..n(0.16))
             .map(|i| {
                 let x = t(i);
                 let f = 1300.0 * (-x * 9.0).exp() + 500.0;
@@ -24,7 +36,7 @@ fn synth(name: &str) -> Vec<f32> {
             })
             .collect(),
         // Sino: fundamental e parciais inarmônicos que somem devagar.
-        "Sino" => (0..n(0.9))
+        "bell" => (0..n(0.9))
             .map(|i| {
                 let x = t(i);
                 let e = (-x * 4.5).exp();
@@ -32,14 +44,14 @@ fn synth(name: &str) -> Vec<f32> {
             })
             .collect(),
         // Vidro: dois agudos curtinhos, como um toque numa taça.
-        "Vidro" => (0..n(0.45))
+        "glass" => (0..n(0.45))
             .map(|i| {
                 let x = t(i);
                 ((TAU * 1975.0 * x).sin() * 0.6 + (TAU * 2960.0 * x).sin() * 0.4) * (-x * 11.0).exp() * (1.0 - (-x * 400.0).exp())
             })
             .collect(),
         // Bolha: sobe rápido, como uma bolha estourando.
-        "Bolha" => (0..n(0.14))
+        "bubble" => (0..n(0.14))
             .map(|i| {
                 let x = t(i);
                 let phase = TAU * (320.0 * x + 2600.0 * x * x);
@@ -47,7 +59,7 @@ fn synth(name: &str) -> Vec<f32> {
             })
             .collect(),
         // Toque: duas batidas graves e redondas.
-        "Toque" => (0..n(0.26))
+        "tap" => (0..n(0.26))
             .map(|i| {
                 let x = t(i);
                 let k = if x < 0.11 { x } else { x - 0.13 };
@@ -59,7 +71,7 @@ fn synth(name: &str) -> Vec<f32> {
             })
             .collect(),
         // Sopro: ruído filtrado que cresce e some.
-        "Sopro" => {
+        "blow" => {
             let mut seed = 0x1234_5678u32;
             let mut low = 0.0f32;
             (0..n(0.35))

@@ -1014,7 +1014,7 @@ impl<'a> Ui<'a> {
         }
     }
 
-    /// Pede ao Glove o fim da sessão: "encerrar", "reiniciar" ou "desligar".
+    /// Asks Glove to end the session: "logout", "quit" (leave a nested Glove), "restart" or "shutdown".
     pub fn request_end_session(&mut self, kind: &str) {
         self.mem.glove_cmds.push(format!("SAIR\t{kind}"));
     }
@@ -1790,18 +1790,7 @@ impl<'a> Ui<'a> {
             buf.reveal = true;
         }
         // Posição x (no conteúdo) → byte no texto.
-        let hit = |buf: &TextBuffer, x: f32| -> usize {
-            let s = buf.text();
-            let mut prev = 0.0;
-            for (i, ch) in s.char_indices() {
-                let w = width(&s[..i + ch.len_utf8()]);
-                if x < (prev + w) / 2.0 {
-                    return i;
-                }
-                prev = w;
-            }
-            s.len()
-        };
+        let hit = |buf: &TextBuffer, x: f32| -> usize { fonts.index_at(buf.text(), px, false, x) };
         let hover = self.hovered(r);
         if hover {
             self.mem.mouse_cursor = Cursor::Text;

@@ -28,12 +28,12 @@ impl Variant {
 
     pub fn id(self) -> &'static str {
         match self {
-            Variant::Claro => "claro",
-            Variant::Listras => "listras",
+            Variant::Claro => "light",
+            Variant::Listras => "pinstripe",
             Variant::Metal => "metal",
-            Variant::Grafite => "grafite",
-            Variant::Moderno => "moderno",
-            Variant::ModernoEscuro => "moderno-escuro",
+            Variant::Grafite => "graphite",
+            Variant::Moderno => "modern",
+            Variant::ModernoEscuro => "modern-dark",
         }
     }
 

@@ -288,20 +288,76 @@ impl Fonts {
         w
     }
 
-    /// Corta o texto com "…" para caber em `max_w`.
-    pub fn ellipsize(&self, text: &str, px: f32, bold: bool, max_w: f32) -> String {
-        if self.measure(text, px, bold) <= max_w {
-            return text.to_string();
+    /// Where in `text` (in bytes) a click at `x` puts the cursor: before the first
+    /// character whose middle is past `x`, or at the end. One pass over the text.
+    pub fn index_at(&self, text: &str, px: f32, bold: bool, x: f32) -> usize {
+        let f = self.font(bold);
+        let sf = f.as_scaled(self.scale(f, px));
+        let mut w = 0.0;
+        let mut before = 0.0;
+        let mut prev: Option<GlyphId> = None;
+        for (i, ch) in text.char_indices() {
+            let id = f.glyph_id(ch);
+            if let Some(p) = prev {
+                w += sf.kern(p, id);
+            }
+            w += if id.0 == 0 && ch > ' ' { self.fallback_advance(ch, px, bold) } else { sf.h_advance(id) };
+            prev = Some(id);
+            if x < (before + w) / 2.0 {
+                return i;
+            }
+            before = w;
         }
-        let mut s: String = text.to_string();
-        while !s.is_empty() {
-            s.pop();
-            let t = format!("{s}…");
-            if self.measure(&t, px, bold) <= max_w {
-                return t;
+        text.len()
+    }
+
+    /// Cuts the text with "…" to fit in `max_w`: the longest beginning that, followed by
+    /// "…", is not wider than `max_w` (the whole text when it fits).
+    ///
+    /// One pass over the text. It used to measure the whole text again for every character
+    /// taken off, which made a long one (an address with thousands of characters in a list
+    /// drawn every frame) cost a second or more.
+    pub fn ellipsize(&self, text: &str, px: f32, bold: bool, max_w: f32) -> String {
+        const ELLIPSIS: char = '…';
+        let f = self.font(bold);
+        let sf = f.as_scaled(self.scale(f, px));
+        // The same arithmetic as `measure`, in the same order, so both agree to the last bit.
+        let advance = |ch: char, id: GlyphId| if id.0 == 0 && ch > ' ' { self.fallback_advance(ch, px, bold) } else { sf.h_advance(id) };
+        let ellipsis = f.glyph_id(ELLIPSIS);
+        let ellipsis_w = advance(ELLIPSIS, ellipsis);
+        let mut w = 0.0;
+        let mut prev: Option<GlyphId> = None;
+        // Where (in bytes) the longest beginning that fits with the "…" ends.
+        let mut fits: Option<usize> = None;
+        let mut whole = true;
+        for (i, ch) in text.char_indices() {
+            let mut cut = w;
+            if let Some(p) = prev {
+                cut += sf.kern(p, ellipsis);
+            }
+            cut += ellipsis_w;
+            if cut <= max_w {
+                fits = Some(i);
+            }
+            let id = f.glyph_id(ch);
+            if let Some(p) = prev {
+                w += sf.kern(p, id);
+            }
+            w += advance(ch, id);
+            prev = Some(id);
+            // Far past the limit: nothing longer fits (kerning never gives this much back).
+            if w > max_w + px * 4.0 {
+                whole = false;
+                break;
             }
         }
-        String::new()
+        if whole && w <= max_w {
+            return text.to_string();
+        }
+        match fits {
+            Some(i) => format!("{}{ELLIPSIS}", &text[..i]),
+            None => String::new(),
+        }
     }
 
     fn rasterize(&self, ch: char, ppx: f32, bold: bool) -> Glyph {
@@ -405,6 +461,69 @@ impl Fonts {
 
 #[cfg(test)]
 mod tests {
+    /// How `ellipsize` worked before: take one character off at a time and measure again.
+    fn ellipsize_by_popping(f: &super::Fonts, text: &str, px: f32, bold: bool, max_w: f32) -> String {
+        if f.measure(text, px, bold) <= max_w {
+            return text.to_string();
+        }
+        let mut s: String = text.to_string();
+        while !s.is_empty() {
+            s.pop();
+            let t = format!("{s}…");
+            if f.measure(&t, px, bold) <= max_w {
+                return t;
+            }
+        }
+        String::new()
+    }
+
+    /// The one-pass `ellipsize` gives exactly what the old one gave, and a very long text
+    /// (an address of thousands of characters) no longer takes a noticeable time.
+    #[test]
+    fn ellipsize_in_one_pass() {
+        let Some(f) = super::Fonts::load_system() else { return };
+        let texts = [
+            "",
+            "a",
+            "Glove",
+            "Um título comum de página — com acentuação, 日本語 e símbolos ✓",
+            "https://example.com/a/very/long/path?with=a&lot=of&parameters=that&never=ends#and-a-fragment",
+            "AVAVAVAV To To To WAWAWA fi fl ffi",
+            "   espaços   no   meio   e no fim   ",
+        ];
+        for text in texts {
+            for bold in [false, true] {
+                for px in [9.0, 12.0, 12.5, 15.0] {
+                    for max_w in [0.0, 3.0, 8.0, 20.0, 47.5, 100.0, 160.0, 333.0, 1000.0] {
+                        assert_eq!(f.ellipsize(text, px, bold, max_w), ellipsize_by_popping(&f, text, px, bold, max_w), "{text:?} px={px} bold={bold} max_w={max_w}");
+                    }
+                }
+            }
+        }
+        // The click position: the same as measuring each beginning of the text.
+        for text in texts {
+            for x in [-5.0, 0.0, 2.0, 7.5, 31.0, 90.0, 250.0, 5000.0] {
+                let mut expected = text.len();
+                let mut before = 0.0;
+                for (i, ch) in text.char_indices() {
+                    let w = f.measure(&text[..i + ch.len_utf8()], 12.0, false);
+                    if x < (before + w) / 2.0 {
+                        expected = i;
+                        break;
+                    }
+                    before = w;
+                }
+                assert_eq!(f.index_at(text, 12.0, false, x), expected, "{text:?} x={x}");
+            }
+        }
+        let long: String = "https://example.com/redirect?to=".chars().chain("abcdefghij%2F0123456789&x=".chars().cycle().take(20_000)).collect();
+        assert_eq!(f.ellipsize(&long[..600], 12.0, false, 420.0), ellipsize_by_popping(&f, &long[..600], 12.0, false, 420.0));
+        let start = std::time::Instant::now();
+        let cut = f.ellipsize(&long, 12.0, false, 420.0);
+        assert!(cut.ends_with('…') && cut.len() < 200);
+        assert!(start.elapsed() < std::time::Duration::from_millis(100), "{:?}", start.elapsed());
+    }
+
     /// Numa distribuição que guarda a fonte noutra pasta (nenhum dos caminhos conhecidos
     /// existe), o fontconfig acha: era o que faltava no Fedora.
     #[test]
