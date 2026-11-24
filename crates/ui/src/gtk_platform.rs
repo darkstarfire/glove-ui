@@ -62,12 +62,17 @@ mod imp_pintura {
 
     impl WidgetImpl for Pintura {
         fn snapshot(&self, s: &gtk::Snapshot) {
+            // A imagem já vem na escala da tela (1,25, 1,5, 2…): cada pixel dela vai num
+            // pixel da tela.
             let k = self.escala.get().max(0.25) as f32;
             for (i, t) in self.faixas.borrow().iter().enumerate() {
                 let Some(t) = t else { continue };
                 let y = (i as i32 * FAIXA) as f32 / k;
                 let r = graphene::Rect::new(0.0, y, t.width() as f32 / k, t.height() as f32 / k);
-                s.append_scaled_texture(t, gsk::ScalingFilter::Nearest, &r);
+                // O nó de textura simples: na escala da tela o GTK o põe pixel a pixel. O
+                // com filtro (append_scaled_texture) passa por outro caminho e borra em
+                // escala fracionária.
+                s.append_texture(t, &r);
             }
         }
 
@@ -419,10 +424,9 @@ fn traduzir(keyval: gdk::Key, state: gdk::ModifierType) -> (Key, String, crate::
 /// cantos são do Glove (o compositor os desenha nas janelas sem moldura, como nos alertas).
 /// O GTK reserva 12 px de margem para a sombra no nó `decoration`, dentro da janela.
 const CSS: &str = "
-window.glove-bare, window.glove-bare decoration, window.glove-bare.csd {
-  box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; outline: none; border: none; padding: 0 !important;
+window.glove-bare, window.glove-bare.csd, window.glove-bare.solid-csd, window.glove-bare decoration {
+  box-shadow: none; margin: 0; border-radius: 0; outline: none; border: none; padding: 0;
 }
-window.glove-bare.csd decoration { margin: 0 !important; box-shadow: none !important; }
 ";
 
 thread_local! {
@@ -1068,7 +1072,11 @@ impl<A: App> State<A> {
         let novo = w.pintura.imp().px.get() != (pw, ph);
         if std::env::var_os("GLOVE_PROF").is_some() {
             let px: i32 = damage.iter().map(|r| (r[2] - r[0]) * (r[3] - r[1])).sum();
-            eprintln!("PROF janela={} pintou={} áreas mudou={}px", w.id, rects.len(), px);
+            eprintln!("PROF janela={} escala={} gdk={:?} px={}x{} pintou={} áreas mudou={}px", w.id, w.scale, w.window.surface().map(|s| (s.scale(), s.scale_factor())), pw, ph, rects.len(), px);
+        }
+        // GLOVE_GTK_DUMP=pasta: guarda a imagem de cada janela (para comparar com a tela).
+        if let Some(d) = std::env::var_os("GLOVE_GTK_DUMP") {
+            let _ = canvas.pm.save_png(std::path::Path::new(&d).join(format!("janela-{}.png", w.id)));
         }
         if !damage.is_empty() || novo {
             w.pintura.mostrar(&canvas, &damage, w.scale);
