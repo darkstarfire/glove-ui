@@ -166,19 +166,23 @@ pub fn has_ffmpeg() -> bool {
 }
 
 /// O primeiro quadro de um vídeo/GIF como PNG (para a miniatura e para mostrar
-/// enquanto o animado não começa), guardado em `~/.cache/glove/papel`.
+/// enquanto o animado não começa), guardado em `~/.cache/glove/wallpaper`.
 pub fn first_frame(path: &str) -> Option<PathBuf> {
     use std::hash::{Hash, Hasher};
     let meta = std::fs::metadata(path).ok()?;
     let mut k = std::collections::hash_map::DefaultHasher::new();
     (path, meta.len(), meta.modified().ok()).hash(&mut k);
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    let dir = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".cache")).join("glove/papel");
+    let dir = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".cache")).join("glove/wallpaper");
     let out = dir.join(format!("{:016x}.png", k.finish()));
     if out.exists() {
         return Some(out);
     }
     std::fs::create_dir_all(&dir).ok()?;
+    // The cache folder up to Glove 0.15.1 (its videos are made again here when needed).
+    if let Some(parent) = dir.parent() {
+        let _ = std::fs::remove_dir_all(parent.join("papel"));
+    }
     let ok = std::process::Command::new("ffmpeg")
         .args(["-y", "-loglevel", "error", "-i", path, "-frames:v", "1", "-vf", "scale='min(1920,iw)':-2"])
         .arg(&out)

@@ -14,12 +14,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Files {
-    /// Onde abrem as janelas novas: "inicio", "mesa", "documentos" ou "computador".
+    /// Onde abrem as janelas novas: "home", "desktop", "documents" ou "computer".
     pub new_window: String,
     /// Nomes dos sete rótulos (na ordem das cores de `LABEL_COLORS`).
     pub labels: Vec<String>,
-    /// Lugares escondidos da barra lateral ("disco", "mesa", "inicio", "aplicativos",
-    /// "documentos", "downloads", "imagens", "musica", "videos", "buscas").
+    /// Lugares escondidos da barra lateral ("disk", "desktop", "home", "applications",
+    /// "documents", "downloads", "pictures", "music", "videos", "smart-folders", "network").
     pub sidebar_hidden: Vec<String>,
     /// Mostrar a extensão dos nomes (".txt").
     pub show_extensions: bool,
@@ -29,7 +29,7 @@ pub struct Files {
     pub icon_size: u32,
     pub text_size: u32,
     pub label_right: bool,
-    /// Ordem dos ícones: "nome", "data", "tamanho" ou "tipo".
+    /// Ordem dos ícones: "name", "date", "size" ou "kind".
     pub arrange: String,
     /// Fundo da vista de ícones: "" (branco) ou "#rrggbb".
     pub background: String,
@@ -143,7 +143,10 @@ pub fn is_screenshot_name(name: &str) -> bool {
 pub const DEFAULT_LABELS: [&str; 7] = ["Vermelho", "Laranja", "Amarelo", "Verde", "Azul", "Roxo", "Cinza"];
 /// Cores dos rótulos (como as do Tiger).
 pub const LABEL_COLORS: [(u8, u8, u8); 7] = [(252, 86, 76), (250, 160, 54), (246, 216, 60), (148, 210, 70), (82, 156, 250), (184, 118, 220), (166, 166, 170)];
-const LABEL_ATTR: &str = "user.glove.rotulo";
+const LABEL_ATTR: &str = "user.glove.label";
+/// The attribute up to Glove 0.15.1. It is still read (the files that carry it cannot be
+/// listed to be converted) and goes away when the label of the file is set again.
+const OLD_LABEL_ATTR: &str = "user.glove.rotulo";
 
 fn cpath(p: &Path) -> Option<std::ffi::CString> {
     std::ffi::CString::new(p.as_os_str().as_encoded_bytes()).ok()
@@ -151,19 +154,25 @@ fn cpath(p: &Path) -> Option<std::ffi::CString> {
 
 /// Rótulo do arquivo (0 = nenhum, 1 a 7).
 pub fn label_of(p: &Path) -> u8 {
-    let (Some(path), Ok(attr)) = (cpath(p), std::ffi::CString::new(LABEL_ATTR)) else { return 0 };
-    let mut buf = [0u8; 4];
-    let n = unsafe { libc::getxattr(path.as_ptr(), attr.as_ptr(), buf.as_mut_ptr() as *mut _, buf.len()) };
-    if n <= 0 {
-        return 0;
+    let Some(path) = cpath(p) else { return 0 };
+    for name in [LABEL_ATTR, OLD_LABEL_ATTR] {
+        let Ok(attr) = std::ffi::CString::new(name) else { continue };
+        let mut buf = [0u8; 4];
+        let n = unsafe { libc::getxattr(path.as_ptr(), attr.as_ptr(), buf.as_mut_ptr() as *mut _, buf.len()) };
+        if n > 0 {
+            return std::str::from_utf8(&buf[..n as usize]).ok().and_then(|s| s.trim().parse::<u8>().ok()).filter(|v| *v <= 7).unwrap_or(0);
+        }
     }
-    std::str::from_utf8(&buf[..n as usize]).ok().and_then(|s| s.trim().parse::<u8>().ok()).filter(|v| *v <= 7).unwrap_or(0)
+    0
 }
 
 /// Põe (1 a 7) ou tira (0) o rótulo.
 pub fn set_label(p: &Path, n: u8) -> Result<(), String> {
     let path = cpath(p).ok_or(tr!("caminho inválido"))?;
     let attr = std::ffi::CString::new(LABEL_ATTR).unwrap();
+    // The label under the old name goes away either way (it would come back otherwise).
+    let old = std::ffi::CString::new(OLD_LABEL_ATTR).unwrap();
+    unsafe { libc::removexattr(path.as_ptr(), old.as_ptr()) };
     let r = unsafe {
         if n == 0 {
             let r = libc::removexattr(path.as_ptr(), attr.as_ptr());

@@ -174,7 +174,7 @@ fn add_in(user: &Path, name: &str, exec: &str) -> std::io::Result<String> {
         id = format!("glove-{base}-{n}.desktop");
         n += 1;
     }
-    std::fs::write(user.join(&id), format!("[Desktop Entry]\nType=Application\nName={name}\nExec={exec}\nX-Glove-Inicio=true\n"))?;
+    std::fs::write(user.join(&id), format!("[Desktop Entry]\nType=Application\nName={name}\nExec={exec}\nX-Glove-LoginItem=true\n"))?;
     Ok(id)
 }
 

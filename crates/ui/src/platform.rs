@@ -1270,8 +1270,8 @@ impl<A: App> Runner<A> {
             // GLOVE_CHECK_DAMAGE=pasta: guarda as duas imagens para comparar.
             if let Some(dir) = std::env::var_os("GLOVE_CHECK_DAMAGE").filter(|d| std::path::Path::new(d).is_dir()) {
                 let dir = std::path::PathBuf::from(dir);
-                let _ = canvas.pm.save_png(dir.join("parcial.png"));
-                let _ = full.pm.save_png(dir.join("inteiro.png"));
+                let _ = canvas.pm.save_png(dir.join("partial.png"));
+                let _ = full.pm.save_png(dir.join("full.png"));
             }
         } else {
             eprintln!("CHECK ok (pintou {rects:?})");

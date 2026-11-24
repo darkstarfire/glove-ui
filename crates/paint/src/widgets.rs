@@ -37,15 +37,19 @@ impl WidgetKind {
 
     pub fn id(self) -> &'static str {
         match self {
-            Self::Clock => "relogio",
-            Self::Calendar => "calendario",
-            Self::Calculator => "calculadora",
-            Self::Weather => "clima",
-            Self::Note => "lembrete",
+            Self::Clock => "clock",
+            Self::Calendar => "calendar",
+            Self::Calculator => "calculator",
+            Self::Weather => "weather",
+            Self::Note => "note",
             Self::Monitor => "monitor",
-            Self::Dictionary => "dicionario",
+            Self::Dictionary => "dictionary",
         }
     }
+
+    /// The ids up to Glove 0.15.1 (then, now), for the Dashboard saved by an older version.
+    pub const OLD_IDS: [(&'static str, &'static str); 6] =
+        [("relogio", "clock"), ("calendario", "calendar"), ("calculadora", "calculator"), ("clima", "weather"), ("lembrete", "note"), ("dicionario", "dictionary")];
 
     pub fn from_id(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.id() == s)

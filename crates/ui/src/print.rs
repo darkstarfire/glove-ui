@@ -68,7 +68,7 @@ impl PrintSheet {
     fn temp_pdf(&self) -> Result<PathBuf, String> {
         let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
         let safe: String = self.name.chars().map(|c| if c.is_alphanumeric() || " .-_".contains(c) { c } else { '_' }).collect();
-        let p = dir.join(format!("glove-imprimir-{}-{safe}.pdf", std::process::id()));
+        let p = dir.join(format!("glove-print-{}-{safe}.pdf", std::process::id()));
         std::fs::write(&p, self.pdf()?).map_err(|e| e.to_string())?;
         Ok(p)
     }

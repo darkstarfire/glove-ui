@@ -108,7 +108,7 @@ fn parent_disk(dev: &str) -> String {
 }
 
 fn ejected_file() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("glove-ejetados")
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("glove-ejected")
 }
 
 fn now_secs() -> u64 {
@@ -116,7 +116,7 @@ fn now_secs() -> u64 {
 }
 
 fn quiet_file() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("glove-silenciosos")
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("glove-quiet")
 }
 
 /// Anota que o aparelho vai ser montado só por um instante (o Discos medindo o

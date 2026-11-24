@@ -935,16 +935,16 @@ pub const DOCK_REV: u32 = 10;
 /// O item do Dock que abre a grade com todos os apps (o compositor a mostra; não é um programa).
 pub const ALL_APPS_ID: &str = "glove.AllApps";
 /// O papel de parede do Glove OS (a luva com o nome), onde o pacote o instalou
-/// (`share/glove/papeis/glove-os.png`, ao lado da pasta dos programas). É o padrão.
+/// (`share/glove/wallpapers/glove-os.png`, ao lado da pasta dos programas). É o padrão.
 pub fn glove_os_wallpaper() -> Option<String> {
     static P: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     P.get_or_init(|| {
         let mut c: Vec<PathBuf> = Vec::new();
         if let Some(bin) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
-            c.push(bin.join("../share/glove/papeis/glove-os.png"));
+            c.push(bin.join("../share/glove/wallpapers/glove-os.png"));
         }
-        c.push("/usr/share/glove/papeis/glove-os.png".into());
-        c.push("/usr/local/share/glove/papeis/glove-os.png".into());
+        c.push("/usr/share/glove/wallpapers/glove-os.png".into());
+        c.push("/usr/local/share/glove/wallpapers/glove-os.png".into());
         c.into_iter().find(|p| p.exists()).and_then(|p| p.canonicalize().ok()).map(|p| p.to_string_lossy().into_owned())
     })
     .clone()
@@ -1207,6 +1207,29 @@ impl Default for Config {
     }
 }
 
+/// Moves what an older version stored under another name: when `old` exists and `new`
+/// does not, `old` is renamed to `new` (the folder of `new` is created). Says whether it moved.
+/// When both exist nothing is touched: the new one is the one in use.
+pub fn move_stored(old: &std::path::Path, new: &std::path::Path) -> bool {
+    if !old.exists() || new.exists() {
+        return false;
+    }
+    if let Some(parent) = new.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::rename(old, new).is_ok()
+}
+
+/// Today's name of a window id an older version stored ("glove.Agenda" → "glove.Calendar").
+pub fn current_window_id(old: &str) -> Option<&'static str> {
+    OLD_WINDOW_IDS.iter().find(|(o, _)| *o == old).map(|(_, new)| *new)
+}
+
+/// Today's name of a program an older version stored ("glove-agenda" → "glove-calendar").
+pub fn current_program(old: &str) -> Option<&'static str> {
+    OLD_PROGRAMS.iter().find(|(o, _)| *o == old).map(|(_, new)| *new)
+}
+
 pub fn dir() -> PathBuf {
     // A tela de login (glove --greeter) usa a configuração do sistema.
     if let Some(d) = std::env::var_os("GLOVE_CONFIG_DIR") {
@@ -1290,7 +1313,7 @@ impl Config {
     /// Os papéis em gel (pacote glove-papeis) saíram do Glove OS: quem estava com um
     /// deles volta para o papel original, em vez de cair no desenhado.
     fn drop_removed_gel(&mut self) -> bool {
-        let gone = |w: &str| w.contains("/glove/papeis/gel/") && !std::path::Path::new(w).exists();
+        let gone = |w: &str| (w.contains("/glove/papeis/gel/") || w.contains("/glove/wallpapers/gel/")) && !std::path::Path::new(w).exists();
         let mut changed = false;
         if gone(&self.wallpaper) {
             self.wallpaper = default_wallpaper();
@@ -1398,6 +1421,8 @@ impl Config {
                 "liso" => "plain".to_string(),
                 v => match v.strip_prefix("cor:") {
                     Some(rgb) => format!("color:{rgb}"),
+                    // The wallpapers that come with Glove moved to share/glove/wallpapers.
+                    None if v.contains("/share/glove/papeis/") => v.replacen("/share/glove/papeis/", "/share/glove/wallpapers/", 1),
                     None => return,
                 },
             };
@@ -1623,6 +1648,8 @@ mod tests {
         v.wallpaper_fit = "lado_a_lado".into();
         v.wallpapers.insert("eDP-1".into(), "ondas".into());
         v.wallpapers.insert("HDMI-A-1".into(), "/home/x/foto.jpg".into());
+        v.wallpapers.insert("DP-1".into(), "/usr/share/glove/papeis/glove-os.png".into());
+        v.wallpaper_favorites = vec!["/usr/local/share/glove/papeis/glove-os.png".into(), "/home/x/papeis/a.png".into()];
         v.hot_corners.top_left = "todas".into();
         v.hot_corners.bottom_right = "protetor".into();
         v.media.data_disc = "nada".into();
@@ -1646,6 +1673,8 @@ mod tests {
         assert_eq!((v.saver.kind.as_str(), v.sound.alert.as_str(), v.terminal_theme.as_str()), ("stars", "glass", "basic"));
         assert_eq!((v.wallpaper.as_str(), v.wallpaper_mode.as_str(), v.wallpaper_fit.as_str()), ("color:10,20,30", "per-display", "tile"));
         assert_eq!((v.wallpapers["eDP-1"].as_str(), v.wallpapers["HDMI-A-1"].as_str()), ("waves", "/home/x/foto.jpg"));
+        assert_eq!(v.wallpapers["DP-1"], "/usr/share/glove/wallpapers/glove-os.png");
+        assert_eq!(v.wallpaper_favorites, ["/usr/local/share/glove/wallpapers/glove-os.png", "/home/x/papeis/a.png"]);
         assert_eq!((v.hot_corners.top_left.as_str(), v.hot_corners.bottom_right.as_str()), ("all", "screensaver"));
         assert_eq!((v.media.data_disc.as_str(), v.removable_action.as_str(), v.desk.arrange.as_str(), v.files.new_window.as_str()), ("nothing", "open", "size", "documents"));
         assert!(!v.rename_old_names());
@@ -1745,7 +1774,7 @@ pub fn register_file_apps(bin_dir: &std::path::Path) {
         }
         let path = dir.join(format!("{bin}.desktop"));
         let text = format!(
-            "[Desktop Entry]\n# Gerado pelo Glove (apps que abrem arquivos).\nType=Application\nName={name}\nIcon={icon}\nExec=\"{}\" %f\nMimeType={mimes}\nNoDisplay=true\nTerminal=false\nOnlyShowIn=Glove;\n",
+            "[Desktop Entry]\n# Generated by Glove (apps that open files).\nType=Application\nName={name}\nIcon={icon}\nExec=\"{}\" %f\nMimeType={mimes}\nNoDisplay=true\nTerminal=false\nOnlyShowIn=Glove;\n",
             exe.display()
         );
         let old = std::fs::read_to_string(&path).ok();

@@ -1,6 +1,6 @@
 //! Sons do Glove, sintetizados aqui mesmo (nada copiado): os alertas que o
 //! painel Som deixa escolher e o "pop" do volume. Cada som vira um WAV em
-//! ~/.cache/glove/sons na primeira vez e é tocado pelo `pw-play` (ou `aplay`).
+//! ~/.cache/glove/sounds na primeira vez e é tocado pelo `pw-play` (ou `aplay`).
 
 use std::f32::consts::TAU;
 use std::path::PathBuf;
@@ -131,12 +131,14 @@ fn padded(s: Vec<f32>) -> Vec<f32> {
 
 fn cache_file(name: &str) -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
-    let dir = base.join("glove/sons");
+    let dir = base.join("glove/sounds");
     // "-2": com silêncio no fim (versão anterior sem ele ficava mais curta que o
     // tempo de a saída de som acordar do repouso, e não se ouvia nada).
     let file = dir.join(format!("{name}-2.wav"));
     if !file.is_file() {
         std::fs::create_dir_all(&dir).ok()?;
+        // The cache folder up to Glove 0.15.1.
+        let _ = std::fs::remove_dir_all(base.join("glove/sons"));
         let _ = std::fs::remove_file(dir.join(format!("{name}.wav")));
         std::fs::write(&file, wav(&padded(synth(name)))).ok()?;
     }
@@ -177,7 +179,7 @@ pub fn alert() {
 mod tests {
     #[test]
     fn sons_validos() {
-        for name in super::ALERTS.iter().chain(["Volume"].iter()) {
+        for name in super::ALERTS.iter().chain(["volume"].iter()) {
             let s = super::synth(name);
             assert!(s.len() > 1000, "{name} curto demais");
             assert!(s.iter().all(|v| v.is_finite() && v.abs() <= 2.5), "{name} fora da faixa");

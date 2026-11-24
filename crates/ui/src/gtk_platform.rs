@@ -1076,7 +1076,7 @@ impl<A: App> State<A> {
         }
         // GLOVE_GTK_DUMP=pasta: guarda a imagem de cada janela (para comparar com a tela).
         if let Some(d) = std::env::var_os("GLOVE_GTK_DUMP") {
-            let _ = canvas.pm.save_png(std::path::Path::new(&d).join(format!("janela-{}.png", w.id)));
+            let _ = canvas.pm.save_png(std::path::Path::new(&d).join(format!("window-{}.png", w.id)));
         }
         if !damage.is_empty() || novo {
             w.pintura.mostrar(&canvas, &damage, w.scale);
