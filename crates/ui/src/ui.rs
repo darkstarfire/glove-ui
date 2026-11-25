@@ -4,6 +4,7 @@
 use glove_config::tr;
 use std::collections::HashMap;
 
+use crate::menu::MenuItem;
 use crate::text::TextBuffer;
 use glove_paint::{
     draw::*,
@@ -476,6 +477,12 @@ pub struct Memory {
     pub(crate) drop_copy: bool,
     /// Arquivos soltos nesta janela e onde.
     pub(crate) dropped: Option<(Vec<std::path::PathBuf>, (f32, f32))>,
+    /// Os buffers de edição dos campos de texto de uma linha (`text_field`,
+    /// `text_field_in`), pelo id, e os que apareceram neste quadro.
+    pub(crate) linhas: HashMap<Id, TextBuffer>,
+    pub(crate) linhas_usadas: Vec<Id>,
+    /// O campo que abriu o menu do botão direito (as ações dele voltam para esse campo).
+    pub(crate) campo_menu: Option<Id>,
     /// Widget que pediu para colar.
     pub(crate) paste_req: Option<Id>,
     /// Texto colado chegando para um widget.
@@ -633,6 +640,12 @@ pub struct Ui<'a> {
 }
 
 const TEXT: f32 = 13.0;
+/// As ações do menu do botão direito dos campos de texto (voltam em `menu_actions`, como as
+/// dos menus do app, que as ignoram).
+const MENU_RECORTAR: &str = "glove-campo:recortar";
+const MENU_COPIAR: &str = "glove-campo:copiar";
+const MENU_COLAR: &str = "glove-campo:colar";
+const MENU_TUDO: &str = "glove-campo:tudo";
 const CONTROL_H: f32 = 22.0;
 
 /// Barras de rolagem modernas: o trilho e o puxador (mais forte sob o mouse).
@@ -1737,6 +1750,22 @@ impl<'a> Ui<'a> {
         if focused {
             let mut cur = (*self.mem.cursor.get(&id).unwrap_or(&value.chars().count())).min(value.chars().count());
             let byte = |s: &String, ci: usize| s.char_indices().nth(ci).map(|(b, _)| b).unwrap_or(s.len());
+            // O texto colado (pedido com Ctrl+V) entra no cursor, numa linha só.
+            if let Some((pid, text)) = self.mem.paste_in.take() {
+                if pid == id {
+                    for ch in text.chars().map(|c| if c == '\n' || c == '\r' { ' ' } else { c }).filter(|c| !c.is_control()) {
+                        let b = byte(value, cur);
+                        value.insert(b, ch);
+                        cur += 1;
+                        changed = true;
+                    }
+                } else {
+                    self.mem.paste_in = Some((pid, text));
+                }
+            }
+            if self.input.keys.iter().any(|k| k.combo == "Ctrl+V") {
+                self.mem.paste_req = Some(id);
+            }
             for ch in self.input.text.chars().filter(|c| !c.is_control()) {
                 let b = byte(value, cur);
                 value.insert(b, ch);
@@ -1776,18 +1805,50 @@ impl<'a> Ui<'a> {
     /// Campo de uma linha com seleção (como a barra de endereço de um navegador): clicar
     /// põe o cursor no lugar, arrastar escolhe, dois cliques escolhem a palavra e três a
     /// linha; Shift com as setas, Ctrl com as setas anda por palavra; Ctrl+A, Ctrl+C,
-    /// Ctrl+X, Ctrl+V e Ctrl+Z. O texto longo rola para os lados. `autofocus` põe o cursor
-    /// nele com tudo escolhido (digitar troca tudo). Devolve (mudou, Enter).
+    /// Ctrl+X, Ctrl+V e Ctrl+Z; o botão direito abre Recortar, Copiar, Colar e Selecionar
+    /// Tudo. O texto longo rola para os lados. `autofocus` põe o cursor nele com tudo
+    /// escolhido (digitar troca tudo). Devolve (mudou, Enter).
     pub fn line_edit(&mut self, r: Rect, buf: &mut TextBuffer, autofocus: bool) -> (bool, bool) {
         let id = self.next_id();
-        const PAD: f32 = 6.0;
         let px = (r.h * 0.56).min(TEXT);
+        let (changed, enter, focused) = self.editar_linha(id, r, buf, autofocus.then_some(true), true, px);
+        // O campo.
+        if self.theme.modern {
+            if focused {
+                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 9.0), &solid(with_alpha(self.theme.accent, 0.4)));
+            }
+            self.c.fill(rrect(r.x, r.y, r.w, r.h, 7.0), &solid(self.theme.control_border));
+            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 6.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
+        } else {
+            self.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 9.0), &solid(with_alpha(self.theme.accent, if focused { 0.5 } else { 0.25 })));
+            self.c.fill(rrect(r.x, r.y, r.w, r.h, 7.0), &solid(Color::WHITE));
+        }
+        self.texto_da_linha(id, r, buf, focused, px);
+        (changed, enter)
+    }
+
+    /// O motor dos campos de uma linha (`line_edit`, `text_field`, `text_field_in`): o
+    /// mouse, o teclado, a área de transferência e o menu do botão direito. `autofocus`:
+    /// `Some(true)` põe o cursor com tudo escolhido, `Some(false)` põe o cursor no fim.
+    /// `clique_escolhe_tudo`: o primeiro clique escolhe o texto inteiro (a barra de
+    /// endereço); sem ele, o clique põe o cursor no lugar. Devolve (mudou, Enter, em foco).
+    fn editar_linha(&mut self, id: Id, r: Rect, buf: &mut TextBuffer, autofocus: Option<bool>, clique_escolhe_tudo: bool, px: f32) -> (bool, bool, bool) {
+        const PAD: f32 = 6.0;
         let fonts = self.fonts;
         let width = |s: &str| fonts.measure(s, px, false);
-        if autofocus {
-            self.mem.focus = Some(id);
-            buf.select_all();
-            buf.reveal = true;
+        match autofocus {
+            Some(true) => {
+                self.mem.focus = Some(id);
+                buf.select_all();
+                buf.reveal = true;
+            }
+            Some(false) => {
+                self.mem.focus = Some(id);
+                let fim = buf.len();
+                buf.set_cursor(fim, false);
+                buf.reveal = true;
+            }
+            None => {}
         }
         // Posição x (no conteúdo) → byte no texto.
         let hit = |buf: &TextBuffer, x: f32| -> usize { fonts.index_at(buf.text(), px, false, x) };
@@ -1805,7 +1866,7 @@ impl<'a> Ui<'a> {
                 buf.select_all();
             } else if self.input.clicks == 2 {
                 buf.select_word(p);
-            } else if !ja && !autofocus {
+            } else if !ja && clique_escolhe_tudo && autofocus.is_none() {
                 // O primeiro clique escolhe tudo (digitar troca o endereço inteiro); com o
                 // campo já em foco, o clique põe o cursor no lugar.
                 buf.select_all();
@@ -1822,6 +1883,27 @@ impl<'a> Ui<'a> {
         } else if self.input.pressed && !hover && self.mem.focus == Some(id) {
             self.mem.focus = None;
         }
+        // O botão direito: o menu do campo (o cursor vai para ele; a seleção fica).
+        if hover && self.input.right_pressed && !self.blocked() {
+            self.mem.focus = Some(id);
+            self.mem.campo_menu = Some(id);
+            let sel = buf.has_selection();
+            let itens = [
+                MenuItem::new(MENU_RECORTAR, tr!("Recortar"), "Ctrl+X").enabled(sel),
+                MenuItem::new(MENU_COPIAR, tr!("Copiar"), "Ctrl+C").enabled(sel),
+                MenuItem::new(MENU_COLAR, tr!("Colar"), "Ctrl+V"),
+                MenuItem::Separator,
+                MenuItem::new(MENU_TUDO, tr!("Selecionar Tudo"), "Ctrl+A"),
+            ];
+            let at = self.pos();
+            self.context_menu(at, &itens);
+        }
+        // O que foi escolhido no menu do campo (chega como as ações dos menus do app).
+        let escolha_do_menu = if self.mem.campo_menu == Some(id) { self.input.menu_actions.iter().find_map(|a| [MENU_RECORTAR, MENU_COPIAR, MENU_COLAR, MENU_TUDO].into_iter().find(|m| a == m)) } else { None };
+        if escolha_do_menu.is_some() {
+            self.mem.campo_menu = None;
+            self.mem.focus = Some(id);
+        }
         let focused = self.mem.focus == Some(id) && !self.blocked();
         let antes = buf.text().to_string();
         let mut enter = false;
@@ -1833,6 +1915,18 @@ impl<'a> Ui<'a> {
                 } else {
                     self.mem.paste_in = Some((pid, text));
                 }
+            }
+            match escolha_do_menu {
+                Some(MENU_RECORTAR | MENU_COPIAR) if buf.has_selection() => {
+                    self.mem.clip_out = Some(buf.selected_text().to_string());
+                    if escolha_do_menu == Some(MENU_RECORTAR) {
+                        buf.delete();
+                        buf.reveal = true;
+                    }
+                }
+                Some(MENU_COLAR) => self.mem.paste_req = Some(id),
+                Some(MENU_TUDO) => buf.select_all(),
+                _ => {}
             }
             for ch in self.input.text.chars().filter(|c| !c.is_control()) {
                 buf.insert(&ch.to_string());
@@ -1900,25 +1994,22 @@ impl<'a> Ui<'a> {
             }
         }
         buf.scroll_x = buf.scroll_x.clamp(0.0, (total - vis + 2.0).max(0.0));
-        // O campo.
-        if self.theme.modern {
-            if focused {
-                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 9.0), &solid(with_alpha(self.theme.accent, 0.4)));
-            }
-            self.c.fill(rrect(r.x, r.y, r.w, r.h, 7.0), &solid(self.theme.control_border));
-            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 6.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
-        } else {
-            self.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 9.0), &solid(with_alpha(self.theme.accent, if focused { 0.5 } else { 0.25 })));
-            self.c.fill(rrect(r.x, r.y, r.w, r.h, 7.0), &solid(Color::WHITE));
-        }
-        // O texto numa superfície de rascunho (corta o que passa do campo).
+        (changed, enter, focused)
+    }
+
+    /// O texto de um campo de uma linha, numa superfície de rascunho: corta o que passa do
+    /// campo e mostra a seleção e o cursor.
+    fn texto_da_linha(&mut self, id: Id, r: Rect, buf: &TextBuffer, focused: bool, px: f32) {
+        const PAD: f32 = 6.0;
+        let fonts = self.fonts;
+        let width = |s: &str| fonts.measure(s, px, false);
         let tr = Rect::new(r.x + 2.0, r.y + 1.0, r.w - 4.0, r.h - 2.0);
         let scale = self.c.scale;
         let mut sc = match self.mem.scratch.remove(&id) {
             Some(c) if c.w == tr.w && c.h == tr.h && c.scale == scale => c,
             _ => match Canvas::new(tr.w, tr.h, scale) {
                 Some(c) => c,
-                None => return (changed, enter),
+                None => return,
             },
         };
         sc.dark_remap = self.c.dark_remap;
@@ -1940,6 +2031,31 @@ impl<'a> Ui<'a> {
         self.c.end_sub(&mut sc, tr.x, tr.y);
         self.mem.scratch.insert(id, sc);
         self.mem.scratch_used.push(id);
+    }
+
+    /// Um campo de uma linha sobre um texto do app (`String`): o buffer de edição (cursor,
+    /// seleção, desfazer, rolagem) fica guardado aqui pelo id e acompanha o texto quando o
+    /// app o troca. `moldura` desenha o campo (depois da edição, antes do texto). Devolve
+    /// (mudou, Enter).
+    fn campo_de_texto(&mut self, id: Id, r: Rect, value: &mut String, autofocus: bool, px: f32, moldura: impl FnOnce(&mut Self, bool)) -> (bool, bool) {
+        let mut buf = match self.mem.linhas.remove(&id) {
+            Some(b) if b.text() == value.as_str() => b,
+            _ => {
+                // Novo, ou o app trocou o texto: o cursor vai para o fim.
+                let mut b = TextBuffer::new(value.replace(['\n', '\r'], " "));
+                let fim = b.len();
+                b.set_cursor(fim, false);
+                b
+            }
+        };
+        let (changed, enter, focused) = self.editar_linha(id, r, &mut buf, autofocus.then_some(false), false, px);
+        if changed {
+            *value = buf.text().to_string();
+        }
+        moldura(self, focused);
+        self.texto_da_linha(id, r, &buf, focused, px);
+        self.mem.linhas.insert(id, buf);
+        self.mem.linhas_usadas.push(id);
         (changed, enter)
     }
 
@@ -1947,33 +2063,19 @@ impl<'a> Ui<'a> {
     /// o cursor nele (no fim). Devolve (mudou, Enter).
     pub fn text_field_in(&mut self, r: Rect, value: &mut String, autofocus: bool) -> (bool, bool) {
         let id = self.next_id();
-        if autofocus {
-            self.mem.focus = Some(id);
-            self.mem.cursor.insert(id, value.chars().count());
-        }
-        let (changed, enter) = self.edit_line(id, r, value);
-        let focused = self.mem.focus == Some(id);
-        if self.theme.modern {
-            if focused {
-                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 7.0), &solid(with_alpha(self.theme.accent, 0.4)));
-            }
-            self.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(self.theme.control_border));
-            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 4.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
-        } else {
-            self.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 3.0), &solid(with_alpha(self.theme.accent, if focused { 0.5 } else { 0.25 })));
-            self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(Color::WHITE));
-        }
         let px = (r.h * 0.62).min(TEXT);
-        let base = r.y + r.h / 2.0 + px * 0.36;
-        let t = value.clone();
-        self.fonts.draw(self.c, &t, r.x + 4.0, base, px, false, ink());
-        if focused {
-            let cur = (*self.mem.cursor.get(&id).unwrap_or(&0)).min(t.chars().count());
-            let before: String = t.chars().take(cur).collect();
-            let cx = r.x + 4.0 + self.fonts.measure(&before, px, false);
-            self.c.fill_rect(cx, r.y + 2.0, 1.0, r.h - 4.0, &solid(ink()));
-        }
-        (changed, enter)
+        self.campo_de_texto(id, r, value, autofocus, px, |ui, focused| {
+            if ui.theme.modern {
+                if focused {
+                    ui.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 7.0), &solid(with_alpha(ui.theme.accent, 0.4)));
+                }
+                ui.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(ui.theme.control_border));
+                ui.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 4.0), &solid(if ui.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
+            } else {
+                ui.c.fill(rrect(r.x - 2.0, r.y - 2.0, r.w + 4.0, r.h + 4.0, 3.0), &solid(with_alpha(ui.theme.accent, if focused { 0.5 } else { 0.25 })));
+                ui.c.fill_rect(r.x, r.y, r.w, r.h, &solid(Color::WHITE));
+            }
+        })
     }
 
     /// Algum campo de texto está com o cursor?
@@ -1993,36 +2095,30 @@ impl<'a> Ui<'a> {
         self.mem.native_host.clone()
     }
 
+    /// Campo de texto de uma linha (formulários): cursor no lugar do clique, seleção com o
+    /// mouse e com Shift, Ctrl+A/C/X/V/Z, o menu do botão direito, e o texto longo rola
+    /// dentro do campo. Devolve verdadeiro quando o texto muda.
     pub fn text_field(&mut self, value: &mut String, width: f32) -> bool {
         let id = self.next_id();
         let r = self.alloc(width, CONTROL_H);
-        let (changed, _) = self.edit_line(id, r, value);
-        let focused = self.mem.focus == Some(id);
-
-        // Moldura afundada + anel azul quando em foco (no moderno: liso e arredondado,
-        // com o anel em volta).
-        if self.theme.modern {
-            if focused {
-                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 7.0), &solid(with_alpha(self.theme.accent, 0.4)));
+        let (changed, _) = self.campo_de_texto(id, r, value, false, TEXT, |ui, focused| {
+            // Moldura afundada + anel azul quando em foco (no moderno: liso e arredondado,
+            // com o anel em volta).
+            if ui.theme.modern {
+                if focused {
+                    ui.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 7.0), &solid(with_alpha(ui.theme.accent, 0.4)));
+                }
+                ui.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(ui.theme.control_border));
+                ui.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 4.0), &solid(if ui.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
+            } else {
+                if focused {
+                    ui.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 5.0), &solid(with_alpha(ui.theme.accent, 0.45)));
+                }
+                ui.c.fill_rect(r.x, r.y, r.w, r.h, &solid(rgba(130, 130, 135, 255)));
+                ui.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, &solid(Color::WHITE));
+                ui.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, 3.0, &vgrad(r.y + 1.0, r.y + 4.0, &[(0.0, rgba(0, 0, 0, 40)), (1.0, rgba(0, 0, 0, 0))]));
             }
-            self.c.fill(rrect(r.x, r.y, r.w, r.h, 5.0), &solid(self.theme.control_border));
-            self.c.fill(rrect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, 4.0), &solid(if self.theme.dark { rgba(30, 30, 32, 255) } else { Color::WHITE }));
-        } else {
-            if focused {
-                self.c.fill(rrect(r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, 5.0), &solid(with_alpha(self.theme.accent, 0.45)));
-            }
-            self.c.fill_rect(r.x, r.y, r.w, r.h, &solid(rgba(130, 130, 135, 255)));
-            self.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0, &solid(Color::WHITE));
-            self.c.fill_rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, 3.0, &vgrad(r.y + 1.0, r.y + 4.0, &[(0.0, rgba(0, 0, 0, 40)), (1.0, rgba(0, 0, 0, 0))]));
-        }
-        let t = value.clone();
-        self.fonts.draw(self.c, &t, r.x + 6.0, r.y + 15.5, TEXT, false, ink());
-        if focused {
-            let cur = *self.mem.cursor.get(&id).unwrap_or(&0);
-            let before: String = t.chars().take(cur).collect();
-            let cx = r.x + 6.0 + self.fonts.measure(&before, TEXT, false);
-            self.c.fill_rect(cx, r.y + 4.0, 1.0, r.h - 8.0, &solid(ink()));
-        }
+        });
         changed
     }
 
@@ -3501,6 +3597,8 @@ impl<'a> Ui<'a> {
         // Libera superfícies de recorte que não apareceram neste quadro.
         let used = std::mem::take(&mut self.mem.scratch_used);
         self.mem.scratch.retain(|k, _| used.contains(k));
+        let usadas = std::mem::take(&mut self.mem.linhas_usadas);
+        self.mem.linhas.retain(|k, _| usadas.contains(k));
         (self.redraw, self.close)
     }
 

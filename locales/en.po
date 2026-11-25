@@ -776,3 +776,15 @@ msgstr "Modern Dark"
 
 msgid "Capturas de tela"
 msgstr "Screenshots"
+
+msgid "Recortar"
+msgstr "Cut"
+
+msgid "Copiar"
+msgstr "Copy"
+
+msgid "Colar"
+msgstr "Paste"
+
+msgid "Selecionar Tudo"
+msgstr "Select All"
