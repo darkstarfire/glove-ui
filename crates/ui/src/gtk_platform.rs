@@ -160,6 +160,13 @@ impl Pintura {
                 }
                 let y0 = f as i32 * FAIXA;
                 let h = FAIXA.min(ph - y0);
+                // A strip with nothing drawn (all of it over the page, in the browser) is not
+                // made into a texture: GTK would blend it over the page on every frame the
+                // page draws (scrolling, video), for nothing.
+                if alfa[(y0 * pw) as usize..((y0 + h) * pw) as usize].iter().all(|&a| a == 0) {
+                    faixas[f] = None;
+                    continue;
+                }
                 let (a, b) = ((y0 * pw * 4) as usize, ((y0 + h) * pw * 4) as usize);
                 let bytes = glib::Bytes::from(&data[a..b]);
                 faixas[f] = Some(gdk::MemoryTexture::new(pw, h, gdk::MemoryFormat::R8g8b8a8Premultiplied, &bytes, (pw * 4) as usize));
@@ -1072,7 +1079,8 @@ impl<A: App> State<A> {
         let novo = w.pintura.imp().px.get() != (pw, ph);
         if std::env::var_os("GLOVE_PROF").is_some() {
             let px: i32 = damage.iter().map(|r| (r[2] - r[0]) * (r[3] - r[1])).sum();
-            eprintln!("PROF janela={} escala={} gdk={:?} px={}x{} pintou={} áreas mudou={}px", w.id, w.scale, w.window.surface().map(|s| (s.scale(), s.scale_factor())), pw, ph, rects.len(), px);
+            let strips = w.pintura.imp().faixas.borrow().iter().filter(|t| t.is_some()).count();
+            eprintln!("PROF janela={} escala={} gdk={:?} px={}x{} pintou={} áreas mudou={}px faixas={strips}/{}", w.id, w.scale, w.window.surface().map(|s| (s.scale(), s.scale_factor())), pw, ph, rects.len(), px, (ph as usize).div_ceil(FAIXA as usize));
         }
         // GLOVE_GTK_DUMP=pasta: guarda a imagem de cada janela (para comparar com a tela).
         if let Some(d) = std::env::var_os("GLOVE_GTK_DUMP") {
