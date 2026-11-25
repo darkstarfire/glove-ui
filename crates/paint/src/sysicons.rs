@@ -209,7 +209,7 @@ fn rasterize(path: &Path, px: u32) -> Option<Pixmap> {
         // O resvg usa outra versão do tiny-skia: os bytes (RGBA pré-multiplicado) são os mesmos.
         return Pixmap::from_vec(pm.take(), IntSize::from_wh(px, px)?);
     }
-    let img = Pixmap::load_png(path).ok()?;
+    let img = if ext.eq_ignore_ascii_case("xpm") { load_xpm(&std::fs::read_to_string(path).ok()?)? } else { Pixmap::load_png(path).ok()? };
     if img.width() == px && img.height() == px {
         return Some(img);
     }
@@ -219,6 +219,75 @@ fn rasterize(path: &Path, px: u32) -> Option<Pixmap> {
     let (dw, dh) = (img.width() as f32 * k, img.height() as f32 * k);
     out.draw_pixmap(0, 0, img.as_ref(), &paint, tiny_skia::Transform::from_row(k, 0.0, 0.0, k, (px as f32 - dw) / 2.0, (px as f32 - dh) / 2.0), None);
     Some(out)
+}
+
+/// An XPM image (the old X11 text format some programs still ship as their icon, like
+/// Eclipse and Python): the quoted strings are the header ("width height colors
+/// chars-per-pixel"), the colors and the rows. Colors: `#RGB`, `#RRGGBB`, `#RRRRGGGGBBBB`,
+/// `None` (transparent) or a few common names (anything else is black).
+fn load_xpm(text: &str) -> Option<Pixmap> {
+    // The quoted strings in order (comments and the C around them are skipped).
+    let mut strings = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('"') {
+        let after = &rest[start + 1..];
+        let end = after.find('"')?;
+        strings.push(&after[..end]);
+        rest = &after[end + 1..];
+    }
+    let mut lines = strings.into_iter();
+    let head: Vec<usize> = lines.next()?.split_whitespace().take(4).map(|v| v.parse().ok()).collect::<Option<_>>()?;
+    let (w, h, ncolors, cpp) = (*head.first()?, *head.get(1)?, *head.get(2)?, *head.get(3)?);
+    if w == 0 || h == 0 || cpp == 0 || cpp > 4 || w > 4096 || h > 4096 {
+        return None;
+    }
+    let mut colors: HashMap<&str, [u8; 4]> = HashMap::new();
+    for _ in 0..ncolors {
+        let line = lines.next()?;
+        let key = line.get(..cpp)?;
+        let words: Vec<&str> = line.get(cpp..)?.split_whitespace().collect();
+        // The "c" (color) value; failing that, "g" (gray) or "m" (mono).
+        let value = ["c", "g", "g4", "m"].iter().find_map(|k| words.iter().position(|w| w == k).and_then(|i| words.get(i + 1)));
+        colors.insert(key, value.map_or([0, 0, 0, 255], |v| xpm_color(v)));
+    }
+    let mut pm = Pixmap::new(w as u32, h as u32)?;
+    let pixels = pm.pixels_mut();
+    for y in 0..h {
+        let row = lines.next()?;
+        for x in 0..w {
+            let key = row.get(x * cpp..(x + 1) * cpp)?;
+            let [r, g, b, a] = colors.get(key).copied().unwrap_or([0, 0, 0, 0]);
+            pixels[y * w + x] = tiny_skia::ColorU8::from_rgba(r, g, b, a).premultiply();
+        }
+    }
+    Some(pm)
+}
+
+/// A color of an XPM file.
+fn xpm_color(v: &str) -> [u8; 4] {
+    if let Some(hex) = v.strip_prefix('#') {
+        let n = hex.len() / 3;
+        if n >= 1 && hex.len() == n * 3 && hex.is_ascii() {
+            // Each channel keeps its two most significant digits ("#fff" counts as "#ffffff").
+            let ch = |i: usize| {
+                let d = &hex[i * n..(i + 1) * n];
+                let d = if n == 1 { format!("{d}{d}") } else { d[..2].to_string() };
+                u8::from_str_radix(&d, 16).unwrap_or(0)
+            };
+            return [ch(0), ch(1), ch(2), 255];
+        }
+        return [0, 0, 0, 255];
+    }
+    match v.to_ascii_lowercase().as_str() {
+        "none" => [0, 0, 0, 0],
+        "white" => [255, 255, 255, 255],
+        "red" => [255, 0, 0, 255],
+        "green" => [0, 255, 0, 255],
+        "blue" => [0, 0, 255, 255],
+        "yellow" => [255, 255, 0, 255],
+        "gray" | "grey" => [190, 190, 190, 255],
+        _ => [0, 0, 0, 255],
+    }
 }
 
 /// O ícone `name` do tema, pronto para desenhar com `px` pixels de lado.
@@ -264,4 +333,47 @@ fn image_with(theme: &str, name: &str, px: u32, full: bool, tint: Option<tiny_sk
         r.push((key, img.clone()));
     });
     img
+}
+
+#[cfg(test)]
+mod tests {
+    /// An XPM like the ones programs ship: comments, a color by name, "None", short and
+    /// long hex colors, two characters per pixel.
+    #[test]
+    fn reads_xpm_icons() {
+        let text = r#"/* XPM */
+static char *icon[] = {
+/* columns rows colors chars-per-pixel */
+"3 2 4 2 ",
+"   c None",
+".. c #FF0000",
+"XX c white",
+"oo c #00008080ffff",
+/* pixels */
+"  ..XX",
+"oo..  "
+};"#;
+        let pm = super::load_xpm(text).unwrap();
+        assert_eq!((pm.width(), pm.height()), (3, 2));
+        let px = |x: usize, y: usize| {
+            let p = pm.pixels()[y * 3 + x].demultiply();
+            (p.red(), p.green(), p.blue(), p.alpha())
+        };
+        assert_eq!(px(0, 0).3, 0);
+        assert_eq!(px(1, 0), (255, 0, 0, 255));
+        assert_eq!(px(2, 0), (255, 255, 255, 255));
+        assert_eq!(px(0, 1), (0, 0x80, 0xff, 255));
+        assert_eq!(px(2, 1).3, 0);
+        // Broken files give nothing (no panic).
+        assert!(super::load_xpm("\"2 2 1 1\", \". c #000\", \"..\"").is_none());
+        assert!(super::load_xpm("not an image").is_none());
+        // The real icons on this computer, when present.
+        for f in ["/opt/eclipse/jee-2026-09/eclipse/icon.xpm", "/usr/share/pixmaps/python3.13.xpm"] {
+            if let Ok(t) = std::fs::read_to_string(f) {
+                let pm = super::load_xpm(&t).unwrap_or_else(|| panic!("{f}"));
+                assert!(pm.pixels().iter().any(|p| p.alpha() > 0), "{f}");
+                assert!(super::rasterize(std::path::Path::new(f), 48).is_some(), "{f}");
+            }
+        }
+    }
 }
