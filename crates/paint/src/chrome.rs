@@ -497,7 +497,13 @@ pub fn menu_item_at(items: &[MenuItem], y: f32) -> Option<usize> {
 
 /// Menu completo (com margem de sombra). O conteúdo começa em (MENU_SHADOW, 0).
 pub fn menu(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usize>, scale: f32) -> Option<Canvas> {
+    menu_min_w(fonts, theme, items, hover, scale, 0.0)
+}
+
+/// A menu at least `min_w` wide.
+fn menu_min_w(fonts: &Fonts, theme: &Theme, items: &[MenuItem], hover: Option<usize>, scale: f32, min_w: f32) -> Option<Canvas> {
     let (w, h) = menu_content_size(fonts, items);
+    let w = w.max(min_w);
     let m = MENU_SHADOW as f32;
     let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
 
@@ -2142,40 +2148,104 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
     ranges
 }
 
-/// Controle de volume que desce do ícone: trilho vertical em gel.
-pub const VOLUME_SLIDER_W: f32 = 30.0;
-pub const VOLUME_SLIDER_H: f32 = 132.0;
-const VS_TOP: f32 = 14.0;
-const VS_BOTTOM: f32 = 118.0;
-
-/// Nível (0 a 1) no ponto `y` do conteúdo do controle.
-pub fn volume_slider_level(y: f32) -> f32 {
-    ((VS_BOTTOM - y) / (VS_BOTTOM - VS_TOP)).clamp(0.0, 1.0)
+/// The sound menu under the volume icon: the volume, the outputs and the preferences.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SoundMenuInfo {
+    pub level: f32,
+    pub muted: bool,
+    /// (name, in use).
+    pub outputs: Vec<(String, bool)>,
+    /// The outputs are still being read.
+    pub loading: bool,
 }
 
-/// Controle completo, com margem de sombra igual à dos menus (conteúdo em MENU_SHADOW, 0).
-pub fn volume_slider(theme: &Theme, level: f32, muted: bool, scale: f32) -> Option<Canvas> {
-    let (w, h) = (VOLUME_SLIDER_W, VOLUME_SLIDER_H);
-    let m = MENU_SHADOW as f32;
-    let mut c = Canvas::new(w + 2.0 * m, h + m, scale)?;
-    let _style = PanelStyle::begin(&mut c);
-    let s = ShadowSpec { blur: 8.0, offset_y: 4.0, radius: 0.0, alpha: 0.45 };
-    if let Some(sh) = Canvas::shadow(-m, 0.0, w + 2.0 * m, h + m, w, h, &s, scale) {
-        c.draw_canvas(&sh, 0.0, 0.0);
+/// What a click in the sound menu hits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SoundPart {
+    /// The slider, with the level under the pointer.
+    Volume(f32),
+    Output(usize),
+    Prefs,
+}
+
+const SOUND_MENU_MIN_W: f32 = 250.0;
+/// Items before the first output: "Sound", the slider row, a separator, "Output".
+const SOUND_FIRST_OUTPUT: usize = 4;
+const SOUND_RAIL_X0: f32 = 44.0;
+const SOUND_RAIL_PAD_R: f32 = 18.0;
+
+fn sound_menu_items(info: &SoundMenuInfo) -> Vec<MenuItem> {
+    let mut v = vec![MenuItem::item(glove_i18n::tr!("Som")).disabled(), MenuItem::item("").disabled(), MenuItem::sep(), MenuItem::item(glove_i18n::tr!("Saída")).disabled()];
+    if info.outputs.is_empty() {
+        v.push(MenuItem::item(if info.loading { glove_i18n::tr!("Procurando…") } else { glove_i18n::tr!("Nenhuma saída encontrada") }).disabled());
     }
-    let x0 = m;
-    c.fill_rect(x0, 0.0, w, h, &solid(rgba(246, 247, 249, 248)));
-    c.pinstripes(x0, 0.0, w, h, rgba(246, 247, 249, 0), rgba(232, 234, 236, 235));
-    c.stroke(rrect(x0, 0.0, w, h, 0.0), &solid(rgba(0, 0, 0, 70)), 1.0 / scale);
-    let cx = x0 + w / 2.0;
-    // Trilho: cinza em cima, cor de destaque embaixo (até o polegar).
-    let tw = 7.0;
-    let ky = VS_BOTTOM - level.clamp(0.0, 1.0) * (VS_BOTTOM - VS_TOP);
-    gel_rect(&mut c, cx - tw / 2.0, VS_TOP, tw, VS_BOTTOM - VS_TOP, tw / 2.0, rgba(200, 202, 206, 255));
-    if !muted {
-        gel_rect(&mut c, cx - tw / 2.0, ky, tw, VS_BOTTOM - ky, tw / 2.0, theme.accent);
+    for (name, on) in &info.outputs {
+        v.push(MenuItem::check(name.clone(), *on));
     }
-    gel_circle(&mut c, cx, ky, 7.5, if muted { rgba(225, 225, 228, 255) } else { lighten(theme.accent, 0.1) });
+    v.push(MenuItem::sep());
+    v.push(MenuItem::item(glove_i18n::tr!("Preferências de Som…")));
+    v
+}
+
+/// Size of the content of the sound menu (without the shadow).
+pub fn sound_menu_size(fonts: &Fonts, info: &SoundMenuInfo) -> (f32, f32) {
+    let (w, h) = menu_content_size(fonts, &sound_menu_items(info));
+    (w.max(SOUND_MENU_MIN_W), h)
+}
+
+fn sound_level_at(w: f32, x: f32) -> f32 {
+    ((x - SOUND_RAIL_X0) / (w - SOUND_RAIL_X0 - SOUND_RAIL_PAD_R)).clamp(0.0, 1.0)
+}
+
+/// The level of the slider at `x` (relative to the content), for dragging outside it.
+pub fn sound_menu_level(fonts: &Fonts, info: &SoundMenuInfo, x: f32) -> f32 {
+    sound_level_at(sound_menu_size(fonts, info).0, x)
+}
+
+/// What is at (x, y), relative to the content of the sound menu.
+pub fn sound_menu_hit(fonts: &Fonts, info: &SoundMenuInfo, x: f32, y: f32) -> Option<SoundPart> {
+    let items = sound_menu_items(info);
+    let (w, _) = sound_menu_size(fonts, info);
+    if x < 0.0 || x > w {
+        return None;
+    }
+    let i = menu_item_at(&items, y)?;
+    if i == 1 {
+        return Some(SoundPart::Volume(sound_level_at(w, x)));
+    }
+    if i == items.len() - 1 {
+        return Some(SoundPart::Prefs);
+    }
+    let k = i.checked_sub(SOUND_FIRST_OUTPUT)?;
+    (k < info.outputs.len()).then_some(SoundPart::Output(k))
+}
+
+/// The item to highlight under (x, y): an output or the preferences.
+pub fn sound_menu_hover(fonts: &Fonts, info: &SoundMenuInfo, x: f32, y: f32) -> Option<usize> {
+    match sound_menu_hit(fonts, info, x, y)? {
+        SoundPart::Volume(_) => None,
+        SoundPart::Output(k) => Some(SOUND_FIRST_OUTPUT + k),
+        SoundPart::Prefs => Some(sound_menu_items(info).len() - 1),
+    }
+}
+
+/// The sound menu, with the shadow margin of the menus (content at MENU_SHADOW, 0).
+pub fn sound_menu(fonts: &Fonts, theme: &Theme, info: &SoundMenuInfo, hover: Option<usize>, scale: f32) -> Option<Canvas> {
+    let items = sound_menu_items(info);
+    let (w, _) = sound_menu_size(fonts, info);
+    let mut c = menu_min_w(fonts, theme, &items, hover, scale, w)?;
+    let x0 = MENU_SHADOW as f32;
+    let cy = menu_item_top(&items, 1) + MENU_ITEM_H / 2.0;
+    let soft = if theme.dark { rgba(170, 170, 176, 255) } else { rgba(96, 96, 100, 255) };
+    speaker_glyph(&mut c, x0 + 20.0, cy - 8.0, 16.0, if info.muted { 0 } else { 1 }, soft);
+    let (tx0, tx1) = (x0 + SOUND_RAIL_X0, x0 + w - SOUND_RAIL_PAD_R);
+    let th = 5.0;
+    gel_rect(&mut c, tx0, cy - th / 2.0, tx1 - tx0, th, th / 2.0, rgba(200, 202, 206, 255));
+    let kx = tx0 + info.level.clamp(0.0, 1.0) * (tx1 - tx0);
+    if !info.muted {
+        gel_rect(&mut c, tx0, cy - th / 2.0, (kx - tx0).max(th), th, th / 2.0, theme.accent);
+    }
+    gel_circle(&mut c, kx, cy, 7.0, if info.muted { rgba(225, 225, 228, 255) } else { lighten(theme.accent, 0.1) });
     Some(c)
 }
 
@@ -2932,6 +3002,28 @@ mod control_tests {
         // A de baixo é cheia, e a bolinha (à direita) é um furo que mostra o fundo.
         assert_ne!(px(2.0 + 5.0, 2.0 + 8.6 + 3.4), (30, 30, 34));
         assert_eq!(px(2.0 + 12.2, 2.0 + 8.6 + 3.4), (30, 30, 34));
+    }
+
+    #[test]
+    fn sound_menu_parts() {
+        let Some(fonts) = crate::Fonts::load_system() else { return };
+        let info = SoundMenuInfo { level: 0.5, muted: false, outputs: vec![("Alto-falantes internos".into(), true), ("Fones de ouvido".into(), false)], loading: false };
+        let (w, h) = sound_menu_size(&fonts, &info);
+        assert!(w >= SOUND_MENU_MIN_W && h > 0.0);
+        let row = |i: usize| menu_item_top(&sound_menu_items(&info), i) + 5.0;
+        assert_eq!(sound_menu_hit(&fonts, &info, 100.0, row(4)), Some(SoundPart::Output(0)));
+        assert_eq!(sound_menu_hit(&fonts, &info, 100.0, row(5)), Some(SoundPart::Output(1)));
+        assert_eq!(sound_menu_hit(&fonts, &info, 100.0, row(7)), Some(SoundPart::Prefs));
+        assert_eq!(sound_menu_hit(&fonts, &info, 100.0, row(0)), None);
+        assert_eq!(sound_menu_hit(&fonts, &info, SOUND_RAIL_X0, row(1)), Some(SoundPart::Volume(0.0)));
+        assert_eq!(sound_menu_hit(&fonts, &info, w - SOUND_RAIL_PAD_R, row(1)), Some(SoundPart::Volume(1.0)));
+        assert_eq!(sound_menu_hover(&fonts, &info, 100.0, row(5)), Some(5));
+        for (name, v) in [("som.png", crate::theme::Variant::Claro), ("som-listras.png", crate::theme::Variant::Listras)] {
+            let c = sound_menu(&fonts, &crate::theme::Theme::new(v), &info, Some(5), 2.0).unwrap();
+            if let Ok(dir) = std::env::var("GLOVE_TEST_PNG") {
+                c.pm.save_png(std::path::Path::new(&dir).join(name)).unwrap();
+            }
+        }
     }
 
     /// A central com tudo (botões e os três trilhos) cabe na altura medida.

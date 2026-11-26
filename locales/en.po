@@ -788,3 +788,45 @@ msgstr "Paste"
 
 msgid "Selecionar Tudo"
 msgstr "Select All"
+
+msgid "Saída"
+msgstr "Output"
+
+msgid "Procurando…"
+msgstr "Searching…"
+
+msgid "Nenhuma saída encontrada"
+msgstr "No output found"
+
+msgid "Preferências de Som…"
+msgstr "Sound Preferences…"
+
+msgid "Interno"
+msgstr "Built-in"
+
+msgid "Virtual"
+msgstr "Virtual"
+
+msgid "Alto-falantes internos"
+msgstr "Internal Speakers"
+
+msgid "Fones de ouvido"
+msgstr "Headphones"
+
+msgid "Headset"
+msgstr "Headset"
+
+msgid "Microfone do headset"
+msgstr "Headset Microphone"
+
+msgid "Microfone interno"
+msgstr "Internal Microphone"
+
+msgid "Microfone"
+msgstr "Microphone"
+
+msgid "Saída de linha"
+msgstr "Line Out"
+
+msgid "Entrada de linha"
+msgstr "Line In"

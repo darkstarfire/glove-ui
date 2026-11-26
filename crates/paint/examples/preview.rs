@@ -67,8 +67,9 @@ fn main() {
     if let Some(c) = cursor_wait(3, scale) {
         screen.draw_canvas(&c, w - 80.0, 80.0);
     }
-    // Controle de volume e aviso de brilho.
-    if let Some(v) = volume_slider(&theme, 0.6, false, scale) {
+    // Menu de som e aviso de brilho.
+    let info = SoundMenuInfo { level: 0.6, muted: false, outputs: vec![("Alto-falantes internos".into(), true), ("Fones de ouvido".into(), false)], loading: false };
+    if let Some(v) = sound_menu(&fonts, &theme, &info, None, scale) {
         screen.draw_canvas(&v, w - 400.0, MENUBAR_H as f32);
     }
     if let Some(o) = osd(OsdKind::Volume, 0.6, false, 1.0, scale) {
