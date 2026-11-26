@@ -627,7 +627,7 @@ const DOCK_PAD_Y: f32 = 4.0;
 
 /// Margem dos lados da prateleira: no Moderno, mais fina (como em cima).
 fn dock_pad_x() -> f32 {
-    if crate::theme::modern() { 6.0 } else { DOCK_PAD_X_CLASSIC }
+    if crate::theme::modern() { 10.0 } else { DOCK_PAD_X_CLASSIC }
 }
 
 /// No Moderno a faixa de baixo é mais alta que as bordas de cima e dos lados: o

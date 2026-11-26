@@ -566,6 +566,18 @@ fn mide_tile(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32)
     match icon {
         Icon::AppsGrid => crate::icons10::apps_grid_on(&mut inner, o, o, big, true),
         Icon::Jangada => crate::tiger_real::jangada_on(&mut inner, o, o, big, true),
+        // The magnifier of Glove on a light tile.
+        Icon::Search => {
+            inner.fill_rect(0.0, 0.0, s, s, &vgrad(0.0, s, &[(0.0, rgba(252, 252, 254, 255)), (1.0, rgba(214, 218, 226, 255))]));
+            let d = s * 0.74;
+            draw_raw(&mut inner, fonts, icon, (s - d) / 2.0, (s - d) / 2.0, d, None);
+        }
+        // The clock face of Glove on a dark tile.
+        Icon::Clock(..) => {
+            inner.fill_rect(0.0, 0.0, s, s, &vgrad(0.0, s, &[(0.0, rgba(78, 82, 94, 255)), (1.0, rgba(28, 30, 36, 255))]));
+            let d = s * 0.84;
+            draw_raw(&mut inner, fonts, icon, (s - d) / 2.0, (s - d) / 2.0, d, None);
+        }
         _ => draw_raw(&mut inner, fonts, icon, o, o, big, None),
     }
     if let Some(shape) = rrect(m, m, s - 2.0 * m, s - 2.0 * m, r) {
@@ -599,7 +611,7 @@ pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: 
         // Todos os Apps (o foguete) e a Jangada ficam com o desenho do Glove, no formato
         // dos ícones do Mide.
         if chosen.starts_with("mide") {
-            if matches!(icon, Icon::Files | Icon::AppsGrid | Icon::Jangada) && s >= 8.0 {
+            if matches!(icon, Icon::Files | Icon::AppsGrid | Icon::Jangada | Icon::Search | Icon::Clock(..)) && s >= 8.0 {
                 mide_tile(pm, fonts, icon, x, y, s);
                 return;
             }
@@ -1524,14 +1536,14 @@ mod mide_probe {
     #[ignore]
     fn mide_lado_a_lado() {
         let Some(fonts) = Fonts::load_system() else { return };
-        let mut c = Canvas::new(8.0 * 136.0, 150.0, 1.0).unwrap();
-        c.fill_rect(0.0, 0.0, 8.0 * 136.0, 150.0, &solid(rgba(200, 200, 210, 255)));
+        let mut c = Canvas::new(10.0 * 136.0, 150.0, 1.0).unwrap();
+        c.fill_rect(0.0, 0.0, 10.0 * 136.0, 150.0, &solid(rgba(200, 200, 210, 255)));
         for (i, n) in ["mide-files", "mide-terminal", "mide-web-browser", "view-app-grid", "mide-calculator"].iter().enumerate() {
             if let Some(img) = crate::sysicons::image_full("mide", n, 128) {
                 c.draw_pixmap_t(img.as_ref().as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::from_translate(10.0 + i as f32 * 136.0, 10.0));
             }
         }
-        for (i, ic) in [Icon::Files, Icon::AppsGrid, Icon::Jangada].iter().enumerate() {
+        for (i, ic) in [Icon::Files, Icon::AppsGrid, Icon::Jangada, Icon::Search, Icon::Clock(10, 9)].iter().enumerate() {
             mide_tile(&mut c, &fonts, *ic, 10.0 + (5 + i) as f32 * 136.0, 10.0, 128.0);
         }
         if let Ok(dir) = std::env::var("GLOVE_TEST_PNG") {
