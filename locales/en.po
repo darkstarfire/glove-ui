@@ -893,3 +893,6 @@ msgstr "November"
 
 msgid "dezembro"
 msgstr "December"
+
+msgid "Histórico da área de transferência"
+msgstr "Clipboard history"

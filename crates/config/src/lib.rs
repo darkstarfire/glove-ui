@@ -813,6 +813,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("preferences", "Abrir Preferências"),
     ("screenshot", "Captura de tela"),
     ("screenshot_area", "Captura de uma área"),
+    ("clipboard_history", "Histórico da área de transferência"),
     ("record_screen", "Gravar a tela"),
     ("record_area", "Gravar uma área"),
     ("record_toggle", "Gravação de tela: abrir ou parar"),
@@ -878,6 +879,9 @@ pub struct Config {
     /// Menu Wi-Fi na barra de menu.
     #[serde(default = "yes")]
     pub wifi_menu: bool,
+    /// The clipboard history in the menu bar.
+    #[serde(default = "yes")]
+    pub clipboard_menu: bool,
     pub keyboard: Keyboard,
     pub pointer: Pointer,
     pub touchpad: Touchpad,
@@ -997,6 +1001,7 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
         // compositor keeps Print and Shift+Print for them when nothing else uses them).
         ("screenshot", "Shift+Super+3"),
         ("screenshot_area", "Shift+Super+4"),
+        ("clipboard_history", "Shift+Super+V"),
         ("record_screen", "Alt+Shift+Super+3"),
         ("record_area", "Alt+Shift+Super+4"),
         ("record_toggle", "Shift+Super+5"),
@@ -1192,6 +1197,7 @@ impl Default for Config {
             appearance: Appearance::default(),
             sound: Sound::default(),
             wifi_menu: true,
+            clipboard_menu: true,
             clock: Clock::default(),
             access: Access::default(),
             saver: Saver::default(),

@@ -1697,6 +1697,8 @@ pub enum Extra {
     Recording { tempo: String, aceso: bool },
     /// Central de controle (Wi-Fi, Bluetooth, brilho, luz do teclado, som).
     Control,
+    /// The clipboard history (what was copied, to copy again).
+    Clipboard,
     /// Ícone de um app na bandeja (StatusNotifierItem: Telegram, Discord, Steam…); sem
     /// imagem, a inicial do nome numa plaquinha.
     Tray { icon: Option<TrayIcon>, title: String },
@@ -1747,6 +1749,7 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
         Extra::Notifications { unread, .. } => 30.0 + fonts.measure(&(*unread).min(99).to_string(), 9.0, true),
         Extra::Recording { tempo, .. } => 22.0 + fonts.measure(tempo, MENUBAR_PX, false),
         Extra::Control => 30.0,
+        Extra::Clipboard => 28.0,
         Extra::Tray { .. } => TRAY_ICON + 10.0,
     }
 }
@@ -1756,6 +1759,14 @@ fn extra_width(fonts: &Fonts, e: &Extra) -> f32 {
 /// a bolinha à direita RECORTADA (ligado). O recorte é vazado de verdade (regra par-ímpar),
 /// não pintado: mostra o fundo (a barra clara, a escura ou o destaque com o menu aberto);
 /// pintado de branco, o ícone virava um bloco no tema escuro.
+/// A clipboard: the board and the clip on top, with two lines of text.
+fn clipboard_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
+    c.stroke(rrect(x + 0.6, y + 1.6, 11.0, 13.8, 2.0), &solid(color), 1.2);
+    c.fill(rrect(x + 3.2, y, 5.8, 3.6, 1.2), &solid(color));
+    c.fill_rect(x + 3.2, y + 7.0, 5.8, 1.2, &solid(color));
+    c.fill_rect(x + 3.2, y + 10.0, 4.2, 1.2, &solid(color));
+}
+
 fn control_glyph(c: &mut Canvas, x: f32, y: f32, color: Color) {
     c.stroke(rrect(x + 0.6, y + 0.6, 15.0, 6.4, 3.2), &solid(color), 1.2);
     c.fill(circle(x + 3.8, y + 3.8, 2.0), &solid(color));
@@ -2119,6 +2130,7 @@ fn draw_extras(c: &mut Canvas, fonts: &Fonts, theme: &Theme, extras: &[Extra], r
             Extra::Clock { text, .. } => fonts.draw(c, text, a + 8.0, 16.0, MENUBAR_PX, false, col),
             Extra::User { name } => fonts.draw(c, name, a + 8.0, 16.0, MENUBAR_PX, true, col),
             Extra::Control => control_glyph(c, a + 7.0, 3.0, col),
+            Extra::Clipboard => clipboard_glyph(c, a + 8.0, 3.0, col),
             Extra::Tray { icon, title } => tray_glyph(c, fonts, icon.as_ref(), title, a + 5.0, (MENUBAR_H as f32 - TRAY_ICON) / 2.0, col),
             Extra::Recording { tempo, aceso } => {
                 // Bolinha vermelha (piscando) e o tempo decorrido ao lado.
