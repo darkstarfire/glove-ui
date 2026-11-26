@@ -189,7 +189,8 @@ fn ports_of(dump: &[Value], dir: Direction) -> Vec<Port> {
         let bus = prop_str(dev, "device.bus").unwrap_or("");
         let api = prop_str(dev, "device.api").unwrap_or("");
         let dev_name = prop_str(dev, "device.description").or_else(|| prop_str(dev, "device.nick")).unwrap_or("").to_string();
-        let current_profile = params(dev, "Profile").first().and_then(|p| p.get("index")).and_then(|v| v.as_u64()).map(|n| n as u32);
+        // Which ports are playing comes from "Route" and the sinks that exist, never from
+        // "Profile": after a profile switch some cards (SOF/UCM) keep reporting the old one.
         let active: Vec<(u32, i64)> = params(dev, "Route")
             .iter()
             .filter_map(|r| Some((r.get("index")?.as_u64()? as u32, r.get("device")?.as_i64()?)))
@@ -237,24 +238,19 @@ fn ports_of(dump: &[Value], dir: Direction) -> Vec<Port> {
                 }
                 _ => port_name(desc, port_type),
             };
-            // The sub-device of the card for this port, in the profile in use.
+            // The sub-device of the card for this port.
             let route_device = r.get("devices").and_then(|v| v.as_array()).and_then(|a| a.first()).and_then(|v| v.as_i64());
-            let in_profile = current_profile.is_some_and(|p| profiles.contains(&p));
-            let live = in_profile && route_device.is_some_and(|d| active.iter().any(|(i, ad)| *i == index && *ad == d));
+            let live = route_device.is_some_and(|d| active.iter().any(|(i, ad)| *i == index && *ad == d));
             let mut port = Port { name, kind, device: Some(dev_id), route: Some(index), route_device, profiles, node: None, default: false, volume: 1.0, muted: false };
-            if live {
-                if let Some(k) = nodes.iter().position(|n| prop_num(n, "device.id") == Some(dev_id as i64) && prop_num(n, "card.profile.device") == route_device) {
-                    used[k] = true;
+            if let Some(k) = nodes.iter().position(|n| prop_num(n, "device.id") == Some(dev_id as i64) && prop_num(n, "card.profile.device") == route_device) {
+                // A sink playing another port of the same sub-device is marked as used too,
+                // so it does not show up again below as a nameless sink.
+                used[k] = true;
+                if live {
                     let n = nodes[k];
                     port.node = n.get("id").and_then(|v| v.as_u64()).map(|v| v as u32);
                     port.default = default.is_some() && prop_str(n, "node.name") == default.as_deref();
                     (port.volume, port.muted) = node_volume(n);
-                }
-            } else if in_profile {
-                // The sink exists, playing another port of the same sub-device: mark it as
-                // used so it does not show up again below as a nameless sink.
-                if let Some(k) = nodes.iter().position(|n| prop_num(n, "device.id") == Some(dev_id as i64) && prop_num(n, "card.profile.device") == route_device) {
-                    used[k] = true;
                 }
             }
             out.push(port);
@@ -313,13 +309,9 @@ fn wpctl(args: &[&str]) -> bool {
     crate::comando::output_within(Command::new("wpctl").args(args), Duration::from_secs(3)).is_some_and(|o| o.status.success())
 }
 
-/// The profile to switch to for `port`: the one in use if it has the port, else the
-/// available one with the highest priority.
+/// The profile to switch to for `port`: the available one with the highest priority
+/// that has it.
 fn best_profile(dev: &Value, port: &Port) -> Option<u32> {
-    let current = params(dev, "Profile").first().and_then(|p| p.get("index")).and_then(|v| v.as_u64()).map(|n| n as u32);
-    if current.is_some_and(|c| port.profiles.contains(&c)) {
-        return current;
-    }
     params(dev, "EnumProfile")
         .iter()
         .filter_map(|p| {
@@ -343,14 +335,18 @@ pub fn select(port: &Port, dir: Direction) -> bool {
     }
     let Some(dump) = dump_json() else { return false };
     let Some(dev) = dump.iter().find(|o| is_type(o, "Device") && o.get("id").and_then(|v| v.as_u64()) == Some(dev_id as u64)) else { return false };
-    let Some(profile) = best_profile(dev, port) else { return false };
-    let current = params(dev, "Profile").first().and_then(|p| p.get("index")).and_then(|v| v.as_u64()).map(|n| n as u32);
-    if current != Some(profile) && !wpctl(&["set-profile", &dev_id.to_string(), &profile.to_string()]) {
-        return false;
+    // A sink of the same sub-device already exists: only its port changes (below).
+    // Otherwise the profile in use does not have the port: switch to one that has it.
+    let sub_sink = dump.iter().any(|n| is_type(n, "Node") && prop_str(n, "media.class") == Some(dir.media_class()) && prop_num(n, "device.id") == Some(dev_id as i64) && prop_num(n, "card.profile.device") == port.route_device);
+    if !sub_sink {
+        let Some(profile) = best_profile(dev, port) else { return false };
+        if !wpctl(&["set-profile", &dev_id.to_string(), &profile.to_string()]) {
+            return false;
+        }
     }
     // Wait for the sink or source of the port; switch the port of that sink if it is
     // playing another one.
-    let deadline = Instant::now() + Duration::from_secs(4);
+    let deadline = Instant::now() + Duration::from_secs(5);
     let mut route_set = false;
     while Instant::now() < deadline {
         if let Some(dump) = dump_json() {
@@ -440,6 +436,20 @@ mod tests {
         assert_eq!((s.inputs[0].name.as_str(), s.inputs[0].default, s.inputs[0].node), ("Microfone interno", true, Some(57)));
     }
 
+    /// After switching to the headphones some cards still report the old profile: the
+    /// port that plays is the one in "Route", with its sink.
+    #[test]
+    fn stale_profile_does_not_hide_the_playing_port() {
+        let dump = DUMP
+            .replace(r#"{"index": 3, "direction": "Output", "device": 3, "profiles": [2]},"#, r#"{"index": 6, "direction": "Output", "device": 6, "profiles": [1]},"#)
+            .replace(r#""node.name": "alsa_output.speaker", "device.id": 48, "card.profile.device": 3"#, r#""node.name": "alsa_output.headphones", "device.id": 48, "card.profile.device": 6"#);
+        let s = parse_dump(&dump).unwrap();
+        let phones = s.outputs.iter().find(|p| p.kind == Kind::Headphones).unwrap();
+        assert_eq!(phones.node, Some(55));
+        let speaker = s.outputs.iter().find(|p| p.route == Some(3)).unwrap();
+        assert_eq!(speaker.node, None);
+    }
+
     #[test]
     fn picks_the_profile_with_the_port() {
         let v: Value = serde_json::from_str(DUMP).unwrap();
@@ -447,8 +457,8 @@ mod tests {
         let s = Snapshot { outputs: ports_of(dump, Direction::Output), inputs: Vec::new() };
         let card = &dump[0];
         assert_eq!(best_profile(card, &s.outputs[2]), Some(1));
-        // HDMI1 is in the profile in use: no switch.
-        assert_eq!(best_profile(card, &s.outputs[0]), Some(2));
+        // HDMI1 is in both: the one with the highest priority.
+        assert_eq!(best_profile(card, &s.outputs[0]), Some(1));
     }
 
     /// `cargo test -p glove-config -- --ignored --nocapture this_computer`
@@ -458,6 +468,22 @@ mod tests {
         let s = snapshot().expect("pw-dump");
         for p in s.outputs.iter().chain(&s.inputs) {
             println!("{:?}", p);
+        }
+    }
+
+    /// Switches the real output to `GLOVE_AUDIO_SELECT` (a part of the name), then shows
+    /// the outputs: `GLOVE_AUDIO_SELECT=Fones cargo test -p glove-config -- --ignored --nocapture select_on_this_computer`
+    #[test]
+    #[ignore]
+    fn select_on_this_computer() {
+        let want = std::env::var("GLOVE_AUDIO_SELECT").expect("GLOVE_AUDIO_SELECT");
+        let s = snapshot().expect("pw-dump");
+        let p = s.outputs.iter().find(|p| p.name.contains(&want)).expect("no such output");
+        let t = Instant::now();
+        let ok = select(p, Direction::Output);
+        println!("select {} -> {ok} in {:?}", p.name, t.elapsed());
+        for p in snapshot().unwrap().outputs {
+            println!("{} node={:?} default={}", p.name, p.node, p.default);
         }
     }
 
