@@ -174,25 +174,36 @@ pub fn messages(pm: &mut Canvas, x: f32, y: f32, s: f32) {
 /// Todos os Apps: disco de alumínio escovado com aro de vidro azul e um foguete
 /// retrô de pé (branco e vermelho), subindo com a chama e a fumaça.
 pub fn apps_grid(pm: &mut Canvas, x: f32, y: f32, s: f32) {
+    apps_grid_on(pm, x, y, s, false);
+}
+
+/// The rocket of All Apps; `tile`: the brushed metal fills the whole square (no round
+/// badge), for the icon in the shape of the Mide theme (the caller cuts the corners).
+pub fn apps_grid_on(pm: &mut Canvas, x: f32, y: f32, s: f32, tile: bool) {
     let u = U { x, y, s };
     let (cx, cy) = (0.5, 0.5);
-    soft_shadow(pm, u.circ(cx, cy, 0.45), s, 0.9);
+    if !tile {
+        soft_shadow(pm, u.circ(cx, cy, 0.45), s, 0.9);
+    }
     // O disco: alumínio com o brilho de metal torneado (fatias claras e escuras).
-    pm.fill(u.circ(cx, cy, 0.45), &linear(u.px(0.2), u.py(0.05), u.px(0.8), u.py(0.95), &[(0.0, rgba(236, 238, 242, 255)), (0.5, rgba(196, 200, 208, 255)), (1.0, rgba(150, 154, 164, 255))]));
+    let base = if tile { u.rr(0.0, 0.0, 1.0, 1.0, 0.0) } else { u.circ(cx, cy, 0.45) };
+    pm.fill(base, &linear(u.px(0.2), u.py(0.05), u.px(0.8), u.py(0.95), &[(0.0, rgba(236, 238, 242, 255)), (0.5, rgba(196, 200, 208, 255)), (1.0, rgba(150, 154, 164, 255))]));
     let n = 48;
     for i in 0..n {
         let (a0, a1) = ((i as f32 / n as f32) * std::f32::consts::TAU, ((i as f32 + 1.0) / n as f32) * std::f32::consts::TAU);
         // Mais claro em cima à esquerda e embaixo à direita, como o metal girado.
         let k = ((a0 * 2.0 + 0.8).cos() * 0.5 + 0.5) * ((i % 2) as f32 * 0.4 + 0.6);
         let c = if k > 0.5 { rgba(255, 255, 255, ((k - 0.5) * 70.0) as u8) } else { rgba(0, 0, 0, ((0.5 - k) * 40.0) as u8) };
-        let r = 0.43;
+        let r = if tile { 0.75 } else { 0.43 };
         pm.fill(u.poly(&[(cx, cy), (cx + r * a0.cos(), cy + r * a0.sin()), (cx + r * a1.cos(), cy + r * a1.sin())]), &solid(c));
     }
-    // Aro: borda escura, o anel de vidro azul e o reflexo de cima.
-    pm.stroke(u.circ(cx, cy, 0.445), &solid(rgba(90, 94, 104, 255)), u.lw(0.012));
-    pm.stroke(u.circ(cx, cy, 0.41), &linear(u.px(0.5), u.py(0.09), u.px(0.5), u.py(0.91), &[(0.0, rgba(150, 205, 255, 255)), (1.0, rgba(25, 90, 190, 255))]), u.lw(0.035));
-    pm.stroke(u.circ(cx, cy, 0.39), &solid(rgba(255, 255, 255, 90)), u.lw(0.008));
-    pm.fill(u.ov(0.22, 0.1, 0.56, 0.2), &vgrad(u.py(0.1), u.py(0.3), &[(0.0, rgba(255, 255, 255, 120)), (1.0, rgba(255, 255, 255, 0))]));
+    if !tile {
+        // Aro: borda escura, o anel de vidro azul e o reflexo de cima.
+        pm.stroke(u.circ(cx, cy, 0.445), &solid(rgba(90, 94, 104, 255)), u.lw(0.012));
+        pm.stroke(u.circ(cx, cy, 0.41), &linear(u.px(0.5), u.py(0.09), u.px(0.5), u.py(0.91), &[(0.0, rgba(150, 205, 255, 255)), (1.0, rgba(25, 90, 190, 255))]), u.lw(0.035));
+        pm.stroke(u.circ(cx, cy, 0.39), &solid(rgba(255, 255, 255, 90)), u.lw(0.008));
+        pm.fill(u.ov(0.22, 0.1, 0.56, 0.2), &vgrad(u.py(0.1), u.py(0.3), &[(0.0, rgba(255, 255, 255, 120)), (1.0, rgba(255, 255, 255, 0))]));
+    }
 
     // Fumaça embaixo.
     for &(fx, fy, fr) in &[(0.38, 0.8, 0.06), (0.5, 0.84, 0.07), (0.62, 0.8, 0.06), (0.44, 0.76, 0.045), (0.57, 0.76, 0.045)] {

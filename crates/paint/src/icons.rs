@@ -543,6 +543,42 @@ pub fn draw_sidebar(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, 
     draw_bare(pm, fonts, icon, x, y, s, None);
 }
 
+/// The drawing of Glove in the shape of the Mide icons: the rounded square filled to the
+/// edge, with the light on top. The Finder face is cut to the shape; the rocket and the
+/// Jangada (drawn in a round badge) are enlarged until the inside of the badge (the rays,
+/// the sky and the sea) fills the square.
+fn mide_tile(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32) {
+    let k = pm.scale;
+    let px = (s * k).round().max(1.0) as u32;
+    // The tile of the Mide icons: 3% from the edge, corners of 23% of the side.
+    let (m, r) = (s * 0.031, s * 0.227);
+    let zoom = match icon {
+        Icon::Files => 1.2,
+        Icon::AppsGrid => 1.12,
+        _ => 1.0,
+    };
+    let (Some(mut inner), Some(mut mask), Some(mut cut)) = (Canvas::new(s, s, k), tiny_skia::Mask::new(px, px), tiny_skia::Pixmap::new(px, px)) else {
+        draw_raw(pm, fonts, icon, x, y, s, None);
+        return;
+    };
+    let big = s * zoom;
+    let o = (s - big) / 2.0;
+    match icon {
+        Icon::AppsGrid => crate::icons10::apps_grid_on(&mut inner, o, o, big, true),
+        Icon::Jangada => crate::tiger_real::jangada_on(&mut inner, o, o, big, true),
+        _ => draw_raw(&mut inner, fonts, icon, o, o, big, None),
+    }
+    if let Some(shape) = rrect(m, m, s - 2.0 * m, s - 2.0 * m, r) {
+        mask.fill_path(&shape, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::from_scale(k, k));
+    }
+    cut.draw_pixmap(0, 0, inner.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), Some(&mask));
+    // A soft shadow under the tile, the tile, the light on top and a fine edge.
+    pm.fill(rrect(x + m, y + m + s * 0.018, s - 2.0 * m, s - 2.0 * m, r), &solid(rgba(0, 0, 0, 46)));
+    pm.draw_pixmap_t(cut.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::from_translate((x * k).round(), (y * k).round()));
+    pm.fill(rrect(x + m, y + m, s - 2.0 * m, s - 2.0 * m, r), &vgrad(y + m, y + s * 0.6, &[(0.0, rgba(255, 255, 255, 40)), (1.0, rgba(255, 255, 255, 0))]));
+    pm.stroke(rrect(x + m + 0.25, y + m + 0.25, s - 2.0 * m - 0.5, s - 2.0 * m - 0.5, r), &solid(rgba(0, 0, 0, 34)), 0.5);
+}
+
 /// O ícone sem a sombra de contato (no Dock os ícones ficam direto no vidro).
 pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32, letter: Option<char>) {
     let chosen = THEME.lock().map(|t| t.clone()).unwrap_or_default();
@@ -559,8 +595,14 @@ pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: 
     // próprio Glove, o Lixo cheio fica desenhado (o tema guarda só um nível dele).
     let live = chosen == DEFAULT_THEME && matches!(icon, Icon::TrashFull(_));
     if !chosen.is_empty() && !live {
-        // No tema do Mide, o desenho próprio dele primeiro.
+        // No tema do Mide, o desenho próprio dele primeiro. O Arquivos (o Finder), o
+        // Todos os Apps (o foguete) e a Jangada ficam com o desenho do Glove, no formato
+        // dos ícones do Mide.
         if chosen.starts_with("mide") {
+            if matches!(icon, Icon::Files | Icon::AppsGrid | Icon::Jangada) && s >= 8.0 {
+                mide_tile(pm, fonts, icon, x, y, s);
+                return;
+            }
             if let Some(name) = icon.mide_name() {
                 if draw_themed(pm, &chosen, name, x, y, s) {
                     return;
@@ -1471,4 +1513,29 @@ pub fn theme_entries() -> Vec<(Icon, &'static str, &'static [&'static str])> {
         (Icon::Eject, "actions", &["media-eject"]),
         (Icon::Clip, "status", &["mail-attachment"]),
     ]
+}
+
+#[cfg(test)]
+mod mide_probe {
+    use super::*;
+
+    /// `GLOVE_TEST_PNG=dir cargo test -p glove-paint -- --ignored mide_lado_a_lado`
+    #[test]
+    #[ignore]
+    fn mide_lado_a_lado() {
+        let Some(fonts) = Fonts::load_system() else { return };
+        let mut c = Canvas::new(8.0 * 136.0, 150.0, 1.0).unwrap();
+        c.fill_rect(0.0, 0.0, 8.0 * 136.0, 150.0, &solid(rgba(200, 200, 210, 255)));
+        for (i, n) in ["mide-files", "mide-terminal", "mide-web-browser", "view-app-grid", "mide-calculator"].iter().enumerate() {
+            if let Some(img) = crate::sysicons::image_full("mide", n, 128) {
+                c.draw_pixmap_t(img.as_ref().as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::from_translate(10.0 + i as f32 * 136.0, 10.0));
+            }
+        }
+        for (i, ic) in [Icon::Files, Icon::AppsGrid, Icon::Jangada].iter().enumerate() {
+            mide_tile(&mut c, &fonts, *ic, 10.0 + (5 + i) as f32 * 136.0, 10.0, 128.0);
+        }
+        if let Ok(dir) = std::env::var("GLOVE_TEST_PNG") {
+            c.pm.save_png(std::path::Path::new(&dir).join("mide.png")).unwrap();
+        }
+    }
 }

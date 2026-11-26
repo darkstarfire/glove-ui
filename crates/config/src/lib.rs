@@ -12,6 +12,7 @@ pub mod audio;
 pub mod comando;
 pub mod discos;
 pub mod inicio;
+pub mod login_wallpaper;
 pub mod rede;
 pub mod senha;
 pub mod sons;
@@ -992,10 +993,12 @@ pub fn default_shortcuts() -> Vec<Shortcut> {
         ("desk_move_next", "Ctrl+Super+Shift+Right"),
         ("cycle_windows", "Alt+Tab"),
         ("preferences", "Super+Comma"),
-        ("screenshot", "Print"),
-        ("screenshot_area", "Shift+Print"),
-        ("record_screen", "Shift+Super+3"),
-        ("record_area", "Shift+Super+4"),
+        // As on the Mac (Command is the Super key); the Print key also works (the
+        // compositor keeps Print and Shift+Print for them when nothing else uses them).
+        ("screenshot", "Shift+Super+3"),
+        ("screenshot_area", "Shift+Super+4"),
+        ("record_screen", "Alt+Shift+Super+3"),
+        ("record_area", "Alt+Shift+Super+4"),
         ("record_toggle", "Shift+Super+5"),
         ("force_quit", "Ctrl+Alt+Escape"),
         ("lock", "Super+L"),
@@ -1299,6 +1302,19 @@ impl Config {
         for s in self.shortcuts.iter_mut().filter(|s| s.action == "cycle_windows" && s.keys.eq_ignore_ascii_case("Ctrl+grave")) {
             s.keys = "Alt+Tab".into();
             added = true;
+        }
+        // Captures moved to Shift+Super+3 and 4 (as on the Mac) and the recordings that
+        // were there to Alt+Shift+Super+3 and 4: only the shortcuts left as they came.
+        for (action, old, new) in [
+            ("record_screen", "Shift+Super+3", "Alt+Shift+Super+3"),
+            ("record_area", "Shift+Super+4", "Alt+Shift+Super+4"),
+            ("screenshot", "Print", "Shift+Super+3"),
+            ("screenshot_area", "Shift+Print", "Shift+Super+4"),
+        ] {
+            for s in self.shortcuts.iter_mut().filter(|s| s.action == action && s.keys.eq_ignore_ascii_case(old)) {
+                s.keys = new.into();
+                added = true;
+            }
         }
         for d in default_shortcuts() {
             if !self.shortcuts.iter().any(|s| s.action == d.action) {
@@ -1609,6 +1625,22 @@ pub fn tune_memory() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capturas_como_no_mac() {
+        let mut c = Config::default();
+        c.shortcuts = vec![
+            Shortcut { action: "screenshot".into(), keys: "Print".into() },
+            Shortcut { action: "screenshot_area".into(), keys: "Shift+Print".into() },
+            Shortcut { action: "record_screen".into(), keys: "Shift+Super+3".into() },
+            Shortcut { action: "record_area".into(), keys: "Ctrl+F9".into() },
+        ];
+        assert!(c.add_missing_shortcuts());
+        assert_eq!(c.shortcut("screenshot"), Some("Shift+Super+3"));
+        assert_eq!(c.shortcut("screenshot_area"), Some("Shift+Super+4"));
+        assert_eq!(c.shortcut("record_screen"), Some("Alt+Shift+Super+3"));
+        // Changed by the user: stays.
+        assert_eq!(c.shortcut("record_area"), Some("Ctrl+F9"));
+    }
 
     #[test]
     fn old_names_in_stored_config() {

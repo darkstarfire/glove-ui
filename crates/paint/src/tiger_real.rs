@@ -1345,11 +1345,19 @@ pub(crate) fn apps_place(pm: &mut Canvas, x: f32, y: f32, s: f32) {
 /// Jangada: a balsa de troncos do litoral brasileiro com a vela triangular cheia de
 /// vento, sobre um mar azul redondo (o "mundo" que ela navega). Arte própria.
 pub(crate) fn jangada(pm: &mut Canvas, x: f32, y: f32, s: f32) {
+    jangada_on(pm, x, y, s, false);
+}
+
+/// The Jangada; `tile`: the sky and the sea fill the whole square (no round disc), for the
+/// icon in the shape of the Mide theme (the caller cuts the corners).
+pub(crate) fn jangada_on(pm: &mut Canvas, x: f32, y: f32, s: f32, tile: bool) {
     let u = U { x, y, s };
     // O mar: um disco azul com o horizonte claro em cima (céu) e as ondas embaixo.
     let (cx, cy, r) = (0.5, 0.53, 0.43);
-    let disc = u.circ(cx, cy, r);
-    soft_shadow(pm, disc.clone(), s, 1.0);
+    let disc = if tile { u.rr(0.0, 0.0, 1.0, 1.0, 0.0) } else { u.circ(cx, cy, r) };
+    if !tile {
+        soft_shadow(pm, disc.clone(), s, 1.0);
+    }
     pm.fill(disc.clone(), &linear(0.0, u.py(cy - r), 0.0, u.py(cy + r), &[
         (0.0, rgba(150, 214, 255, 255)),
         (0.5, rgba(206, 236, 255, 255)),

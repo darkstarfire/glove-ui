@@ -11,6 +11,7 @@ pub mod sysicons;
 pub mod icons;
 pub mod image;
 pub mod saver;
+pub mod screens;
 pub mod theme;
 mod tiger;
 mod tiger_prefs;

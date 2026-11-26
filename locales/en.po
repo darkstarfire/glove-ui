@@ -830,3 +830,66 @@ msgstr "Line Out"
 
 msgid "Entrada de linha"
 msgstr "Line In"
+
+msgid "Digite a senha"
+msgstr "Enter Password"
+
+msgid "{0}, {1} de {2}"
+msgstr "{0}, {2} {1}"
+
+msgid "domingo"
+msgstr "Sunday"
+
+msgid "segunda-feira"
+msgstr "Monday"
+
+msgid "terça-feira"
+msgstr "Tuesday"
+
+msgid "quarta-feira"
+msgstr "Wednesday"
+
+msgid "quinta-feira"
+msgstr "Thursday"
+
+msgid "sexta-feira"
+msgstr "Friday"
+
+msgid "sábado"
+msgstr "Saturday"
+
+msgid "janeiro"
+msgstr "January"
+
+msgid "fevereiro"
+msgstr "February"
+
+msgid "março"
+msgstr "March"
+
+msgid "abril"
+msgstr "April"
+
+msgid "maio"
+msgstr "May"
+
+msgid "junho"
+msgstr "June"
+
+msgid "julho"
+msgstr "July"
+
+msgid "agosto"
+msgstr "August"
+
+msgid "setembro"
+msgstr "September"
+
+msgid "outubro"
+msgstr "October"
+
+msgid "novembro"
+msgstr "November"
+
+msgid "dezembro"
+msgstr "December"

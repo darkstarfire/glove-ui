@@ -184,6 +184,75 @@ impl FileBrowser {
         }
     }
 
+    /// Can this item be chosen here (folders always; files when the mode takes them)?
+    fn choosable(&self, p: &Path, dir: bool) -> bool {
+        dir || self.mode == Mode::Save || (self.mode == Mode::Open && self.accepts(p))
+    }
+
+    /// The arrow keys, as in the Finder columns: up and down walk the column, right goes
+    /// into the folder, left back to the one that holds it. `lr`: left and right count
+    /// (not with the cursor in the name field). `view_h`: height of a column (scrolls to
+    /// keep the item in view).
+    fn arrow(&mut self, k: Key, lr: bool, view_h: f32) {
+        // Where the keyboard is: the chosen file (in the last column) or the last folder
+        // opened (in the column before it).
+        let (ci, cur) = match &self.selected {
+            Some(s) => (self.columns.len() - 1, Some(s.clone())),
+            None if self.columns.len() > 1 => (self.columns.len() - 2, self.columns.last().cloned()),
+            None => (0, None),
+        };
+        let (col, target) = match k {
+            Key::Up | Key::Down => {
+                let Some(dir) = self.columns.get(ci).cloned() else { return };
+                let items = self.items(&dir);
+                let ok: Vec<(PathBuf, bool)> = items.iter().filter(|(_, p, d)| self.choosable(p, *d)).map(|(_, p, d)| (p.clone(), *d)).collect();
+                if ok.is_empty() {
+                    return;
+                }
+                let at = cur.as_ref().and_then(|c| ok.iter().position(|(p, _)| p == c));
+                let next = match (at, k) {
+                    (None, Key::Up) => ok.len() - 1,
+                    (None, _) => 0,
+                    (Some(i), Key::Up) => i.saturating_sub(1),
+                    (Some(i), _) => (i + 1).min(ok.len() - 1),
+                };
+                (ci, ok[next].clone())
+            }
+            Key::Right if lr => {
+                // Into the open folder: its first item.
+                if self.selected.is_some() || self.columns.len() < 2 {
+                    return;
+                }
+                let dir = self.columns.last().cloned().unwrap_or_else(home);
+                let items = self.items(&dir);
+                let Some((p, d)) = items.iter().find(|(_, p, d)| self.choosable(p, *d)).map(|(_, p, d)| (p.clone(), *d)) else { return };
+                (self.columns.len() - 1, (p, d))
+            }
+            Key::Left if lr => {
+                // Back: the folder that holds the item, chosen in the column before.
+                if ci == 0 {
+                    return;
+                }
+                let Some(dir) = self.columns.get(ci).cloned() else { return };
+                (ci - 1, (dir, true))
+            }
+            _ => return,
+        };
+        let (p, d) = target;
+        self.click(col, p.clone(), d);
+        // Keep it in view.
+        if let Some(i) = self.columns.get(col).cloned().map(|dir| self.items(&dir)).and_then(|it| it.iter().position(|(_, q, _)| *q == p)) {
+            if let Some(s) = self.scroll.get_mut(col) {
+                let (top, bottom) = (i as f32 * ROW, (i + 1) as f32 * ROW);
+                if top < *s {
+                    *s = top;
+                } else if bottom > *s + view_h {
+                    *s = bottom - view_h;
+                }
+            }
+        }
+    }
+
     /// Confirma: no abrir, o arquivo escolhido; no salvar, a pasta + o nome.
     fn confirm(&mut self) -> Option<Choice> {
         match self.mode {
@@ -368,6 +437,14 @@ impl Ui<'_> {
             }
             self.c.vline(x + COL_W - 1.0, body.y, body.h, rgba(200, 200, 206, 255));
         }
+        // The arrow keys walk the columns (not while naming a new folder).
+        if click.is_none() && fb.new_folder.is_none() {
+            let lr = !(fb.mode == Mode::Save && self.has_focus());
+            let arrows: Vec<Key> = self.keys().iter().map(|k| k.key).filter(|k| matches!(k, Key::Up | Key::Down | Key::Left | Key::Right)).collect();
+            for k in arrows {
+                fb.arrow(k, lr, body.h);
+            }
+        }
         let mut result = None;
         if let Some((ci, p, dir, double)) = click {
             fb.click(ci, p, dir);
@@ -480,6 +557,38 @@ impl Ui<'_> {
 #[cfg(test)]
 mod sheet_tests {
     use super::*;
+
+    #[test]
+    fn setas_andam_pelas_colunas() {
+        let t = std::env::temp_dir().join(format!("glove-fb-setas-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&t);
+        for d in ["a/x", "a/y", "b"] {
+            std::fs::create_dir_all(t.join(d)).unwrap();
+        }
+        std::fs::write(t.join("c.txt"), "").unwrap();
+        let mut fb = FileBrowser::folder(Some(t.clone()));
+        // Down: the first folder (in the folder mode, the file does not count).
+        fb.arrow(Key::Down, true, 100.0);
+        assert_eq!(fb.columns.last(), Some(&t.join("a")));
+        fb.arrow(Key::Down, true, 100.0);
+        assert_eq!(fb.columns.last(), Some(&t.join("b")));
+        fb.arrow(Key::Down, true, 100.0);
+        assert_eq!(fb.columns.last(), Some(&t.join("b")));
+        fb.arrow(Key::Up, true, 100.0);
+        assert_eq!(fb.columns.last(), Some(&t.join("a")));
+        // Right: into "a"; Left: back, with "a" still chosen.
+        fb.arrow(Key::Right, true, 100.0);
+        assert_eq!(fb.columns.last(), Some(&t.join("a/x")));
+        fb.arrow(Key::Down, true, 100.0);
+        assert_eq!(fb.columns.last(), Some(&t.join("a/y")));
+        fb.arrow(Key::Left, true, 100.0);
+        assert_eq!(fb.columns, vec![t.clone(), t.join("a")]);
+        assert_eq!(fb.dir(), t.join("a"));
+        // Without left and right (the name field has the cursor): nothing happens.
+        fb.arrow(Key::Right, false, 100.0);
+        assert_eq!(fb.dir(), t.join("a"));
+        let _ = std::fs::remove_dir_all(&t);
+    }
 
     #[test]
     fn folha_cabe_na_janela() {
