@@ -445,6 +445,12 @@ pub struct Memory {
     pub(crate) alert_open: bool,
     active: Option<Id>,
     focus: Option<Id>,
+    /// Os campos de texto na ordem em que foram desenhados neste quadro (a ordem do Tab).
+    focus_order: Vec<Id>,
+    /// Tab (1) ou Shift+Tab (-1) num campo: o cursor vai para o próximo no fim do quadro.
+    tab_req: Option<i32>,
+    /// O campo que acabou de receber o cursor pelo Tab: escolhe o texto todo (como no Mac).
+    focus_enter: Option<Id>,
     pub(crate) popup: Option<PopupState>,
     /// Item escolhido no pop-up no quadro anterior: (id, índice).
     pub(crate) popup_choice: Option<(Id, usize)>,
@@ -1836,6 +1842,12 @@ impl<'a> Ui<'a> {
         const PAD: f32 = 6.0;
         let fonts = self.fonts;
         let width = |s: &str| fonts.measure(s, px, false);
+        self.mem.focus_order.push(id);
+        if self.mem.focus_enter == Some(id) {
+            self.mem.focus_enter = None;
+            buf.select_all();
+            buf.reveal = true;
+        }
         match autofocus {
             Some(true) => {
                 self.mem.focus = Some(id);
@@ -1975,6 +1987,11 @@ impl<'a> Ui<'a> {
                         self.mem.focus = None;
                     }
                     Key::Escape => self.mem.focus = None,
+                    // Tab / Shift+Tab: para o próximo campo (ou o anterior), no fim do quadro.
+                    Key::Tab => {
+                        self.mem.tab_req = Some(if shift { -1 } else { 1 });
+                        continue;
+                    }
                     _ => continue,
                 }
                 buf.reveal = true;
@@ -3542,7 +3559,35 @@ impl<'a> Ui<'a> {
         }
     }
 
+    /// O Tab entre os campos de texto: com um campo em foco, vai para o próximo (Shift+Tab,
+    /// o anterior), dando a volta; sem nenhum em foco, o Tab vai para o primeiro. Um campo
+    /// de várias linhas (que usa o Tab para inserir tabulação) fica de fora.
+    fn tab_focus(&mut self) {
+        let order = std::mem::take(&mut self.mem.focus_order);
+        let dir = match self.mem.tab_req.take() {
+            Some(d) => d,
+            None if self.mem.focus.is_none() && self.input.active && !self.blocked() => match self.input.keys.iter().find(|k| k.key == Key::Tab && (k.combo == "Tab" || k.combo == "Shift+Tab")) {
+                Some(k) => if k.combo == "Shift+Tab" { -1 } else { 1 },
+                None => return,
+            },
+            None => return,
+        };
+        if order.is_empty() {
+            return;
+        }
+        let n = order.len() as i32;
+        let next = match self.mem.focus.and_then(|f| order.iter().position(|x| *x == f)) {
+            Some(i) => order[(i as i32 + dir).rem_euclid(n) as usize],
+            None if dir > 0 => order[0],
+            None => order[order.len() - 1],
+        };
+        self.mem.focus = Some(next);
+        self.mem.focus_enter = Some(next);
+        self.mem.wake_after = Some(std::time::Duration::ZERO);
+    }
+
     pub(crate) fn finish(mut self) -> (bool, bool) {
+        self.tab_focus();
         // Pop-up aberto: os itens acendem pela posição do mouse.
         let sensitive = self.ptr_used.get() || self.mem.popup.as_ref().is_some_and(|p| p.native != Some(true)) || self.mem.capture.is_some();
         self.mem.pointer_sensitive = sensitive;

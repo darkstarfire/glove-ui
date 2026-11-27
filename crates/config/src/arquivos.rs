@@ -131,6 +131,29 @@ pub fn screenshots_dir() -> PathBuf {
     }
 }
 
+/// A pasta Vídeos (a do user-dirs; senão ~/Vídeos ou ~/Videos, a que existir).
+pub fn videos_dir() -> PathBuf {
+    if let Some(p) = user_dir("VIDEOS") {
+        return p;
+    }
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    ["Vídeos", "Videos"].iter().map(|d| home.join(d)).find(|d| d.is_dir()).unwrap_or_else(|| home.join(tr!("Vídeos")))
+}
+
+/// Onde vão as gravações de tela: a pasta de gravações dentro de Vídeos (a que já
+/// existir, "Gravações de tela" ou "Screen Recordings"; senão a do idioma). Como as
+/// capturas, mas quem cria a pasta é o gravador, na hora de gravar.
+pub fn screen_recordings_dir() -> PathBuf {
+    let vids = videos_dir();
+    for name in ["Gravações de tela", "Screen Recordings", tr!("Gravações de tela")] {
+        let d = vids.join(name);
+        if d.is_dir() {
+            return d;
+        }
+    }
+    vids.join(tr!("Gravações de tela"))
+}
+
 /// O nome é de uma captura de tela do Glove ("Captura de tela 2026-…")?
 pub fn is_screenshot_name(name: &str) -> bool {
     name.starts_with("Captura de tela ") || name.starts_with("Screenshot ") || name.starts_with(tr!("Captura de tela"))

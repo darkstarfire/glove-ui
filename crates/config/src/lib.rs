@@ -243,13 +243,15 @@ pub struct Dock {
     pub smart_hide: bool,
     /// Ícone pula enquanto o app abre.
     pub animate_launch: bool,
+    /// The Downloads folder as a stack next to the Trash (opens in a grid, like on the Mac).
+    pub downloads_stack: bool,
     /// Efeito de minimizar: "scale" ou "genie".
     pub minimize_effect: String,
 }
 
 impl Default for Dock {
     fn default() -> Self {
-        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, smart_hide: true, animate_launch: true, minimize_effect: "scale".into() }
+        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, smart_hide: true, animate_launch: true, downloads_stack: true, minimize_effect: "scale".into() }
     }
 }
 

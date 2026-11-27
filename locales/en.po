@@ -896,3 +896,15 @@ msgstr "December"
 
 msgid "Histórico da área de transferência"
 msgstr "Clipboard history"
+
+msgid "Vídeos"
+msgstr "Videos"
+
+msgid "Gravações de tela"
+msgstr "Screen Recordings"
+
+msgid "Abrir no Arquivos"
+msgstr "Open in Files"
+
+msgid "A pasta está vazia"
+msgstr "The folder is empty"
