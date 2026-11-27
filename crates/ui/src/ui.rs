@@ -2648,7 +2648,10 @@ impl<'a> Ui<'a> {
         let mut rects = vec![Rect::new(0.0, 0.0, 0.0, 0.0); buttons.len()];
         for i in (0..buttons.len()).rev() {
             if buttons.len() == 3 && i == 0 {
-                rects[0] = Rect::new(tx, by, widths[0], CONTROL_H);
+                // À esquerda, alinhado ao texto; sem espaço (botões compridos), encosta
+                // mais à esquerda para não ficar por baixo dos outros.
+                let x0 = tx.min(x - widths[0]).max(sx + 16.0);
+                rects[0] = Rect::new(x0, by, widths[0], CONTROL_H);
                 break;
             }
             x -= widths[i];
