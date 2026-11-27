@@ -61,6 +61,8 @@ pub struct FileBrowser {
     sheet_size: Option<(f32, f32)>,
     /// Arrastando o canto da folha: onde o mouse pegou e o tamanho naquele momento.
     grip: Option<(f32, f32, f32, f32)>,
+    /// In the Glove the sheet opens as a window of its own: the request it is waiting on.
+    pub(crate) native_key: Option<u64>,
 }
 
 /// Tamanho da folha dentro de uma janela `(w, h)`: o que o usuário pediu (ou o
@@ -142,7 +144,27 @@ impl FileBrowser {
 
     fn new(mode: Mode, dir: Option<PathBuf>, name: String, filter: &[&str]) -> Self {
         let dir = dir.filter(|d| d.is_dir()).unwrap_or_else(home);
-        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None, labels: None, sheet_size: None, grip: None }
+        Self { mode, columns: vec![dir], selected: None, name, filter: filter.iter().map(|s| s.to_lowercase()).collect(), scroll: vec![0.0], error: None, first: true, new_folder: None, new_folder_first: false, new_folder_fresh: false, listing: Default::default(), whole_window: false, grown_from: None, labels: None, sheet_size: None, grip: None, native_key: None }
+    }
+
+    /// The same request, for the window of its own (Open or Save in a new window, in the
+    /// Glove): it starts where this one is, with the same name, filter and labels.
+    pub(crate) fn window_copy(&self) -> FileBrowser {
+        let mut f = FileBrowser::new(self.mode, self.columns.last().cloned(), self.name.clone(), &[]);
+        f.filter = self.filter.clone();
+        f.labels = self.labels.clone();
+        f.whole_window = true;
+        f
+    }
+
+    /// The title of that window.
+    pub(crate) fn window_title(&self) -> String {
+        match (&self.labels, self.mode) {
+            (Some((t, _)), _) => t.clone(),
+            (None, Mode::Save) => tr!("Salvar").to_string(),
+            (None, Mode::Folder) => tr!("Escolher uma pasta").to_string(),
+            (None, Mode::Open) => tr!("Abrir").to_string(),
+        }
     }
 
     /// O conteúdo da pasta (lido do disco só na primeira vez).
@@ -288,6 +310,31 @@ impl Ui<'_> {
     /// Janela pequena demais para a folha (um painel, como o do Vídeo): ela cresce
     /// enquanto a folha está aberta e volta ao tamanho de antes ao fechar.
     pub fn file_sheet(&mut self, fb: &mut FileBrowser) -> Option<Choice> {
+        // In the Glove, Open and Save are a window of their own, tied to this one (as the
+        // alerts): the choice comes back here, in a later frame.
+        if self.mem.file_native && !fb.whole_window {
+            let key = match fb.native_key {
+                Some(k) => k,
+                None => {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    (std::time::SystemTime::now(), self.mem.window_id, fb.columns.first()).hash(&mut h);
+                    let k = h.finish();
+                    fb.native_key = Some(k);
+                    self.mem.file_new = Some((k, fb.window_copy()));
+                    k
+                }
+            };
+            if let Some(p) = self.mem.file_results.iter().position(|r| r.0 == key) {
+                let (_, c) = self.mem.file_results.remove(p);
+                fb.native_key = None;
+                self.mem.alert_open = false;
+                return Some(c);
+            }
+            self.mem.file_want = Some(key);
+            self.set_enabled(false);
+            return None;
+        }
         const ROOM: (f32, f32) = (600.0, 400.0);
         let (w, h) = (self.c.w, self.c.h);
         if !fb.whole_window && fb.grown_from.is_none() && (w < ROOM.0 - 1.0 || h < ROOM.1 - 1.0) {

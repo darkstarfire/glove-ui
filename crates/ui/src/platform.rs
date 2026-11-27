@@ -233,6 +233,8 @@ struct Win {
     app_id: String,
     /// Janela de alerta aberta pelo glove-ui (não pelo app): (janela dona, o alerta).
     alert_of: Option<(u32, crate::ui::AlertReq)>,
+    /// Open or Save in a window of its own (opened by glove-ui): (owner, request, browser).
+    file_of: Option<(u32, u64, crate::filebrowser::FileBrowser)>,
 }
 
 /// O que o usuário aumentou além do mínimo, nos eixos em que ele mexeu (`touched`); os
@@ -304,6 +306,8 @@ impl Shells {
         mem.native_popups = std::env::var_os("GLOVE_POPUP_IN_WINDOW").is_none();
         // GLOVE_ALERT_SHEET=1: os alertas como folha dentro da janela (o jeito antigo).
         mem.alert_native = crate::ui::native_menus() && std::env::var_os("GLOVE_ALERT_SHEET").is_none();
+        // GLOVE_FILE_SHEET=1: Open and Save as a sheet inside the window (the old way).
+        mem.file_native = mem.alert_native && std::env::var_os("GLOVE_FILE_SHEET").is_none();
         Win {
             id,
             window,
@@ -345,6 +349,7 @@ impl Shells {
             last_click: (0, (0.0, 0.0), 0),
             app_id: opts.app_id.clone(),
             alert_of: None,
+            file_of: None,
         }
     }
 }
@@ -400,6 +405,8 @@ struct Runner<A: App> {
     list_popup: Option<ListPopup>,
     /// Respostas de alertas escolhidas neste quadro: (janela dona, alerta, botão).
     alert_done: Vec<(u32, u64, usize)>,
+    /// The choices of Open/Save windows going back to their owners.
+    file_done: Vec<(u32, u64, crate::filebrowser::Choice)>,
     /// O timer da rolagem pelas setas da lista está rodando.
     list_scroll_timer: bool,
     // Menus na barra global
@@ -671,6 +678,7 @@ pub fn run<A: App>(opts: WindowOptions, app: A) -> Result<(), Box<dyn std::error
         seat: None,
         list_popup: None,
         alert_done: Vec::new(),
+        file_done: Vec::new(),
         list_scroll_timer: false,
         menu_stream: None,
         menu_sent: String::new(),
@@ -837,6 +845,14 @@ impl<A: App> Runner<A> {
         if self.list_popup.as_ref().is_some_and(|l| l.win == id) {
             self.list_popup = None;
         }
+        // Open/Save window: it goes away and the choice goes to the owner.
+        if let Some(parent) = self.w.file_of.as_ref().map(|f| f.0) {
+            if let Some(next) = self.others.pop() {
+                drop(std::mem::replace(&mut self.w, next));
+            }
+            self.deliver_files(parent);
+            return;
+        }
         // Janela de alerta: some e a resposta vai para a dona (o app não sabe dela).
         if let Some((parent, _)) = self.w.alert_of.clone() {
             if let Some(next) = self.others.pop() {
@@ -846,7 +862,7 @@ impl<A: App> Runner<A> {
             return;
         }
         // As janelas de alerta desta vão junto.
-        self.others.retain(|o| o.alert_of.as_ref().is_none_or(|(p, _)| *p != id));
+        self.others.retain(|o| o.alert_of.as_ref().is_none_or(|(p, _)| *p != id) && o.file_of.as_ref().is_none_or(|f| f.0 != id));
         match self.others.pop() {
             Some(next) => {
                 // Soltar a janela fecha o toplevel no compositor.
@@ -857,6 +873,62 @@ impl<A: App> Runner<A> {
                 self.app.window_closed(id);
                 self.exit = true;
             }
+        }
+    }
+
+    /// Gives the window `parent` the choices of its Open/Save windows and redraws it.
+    fn deliver_files(&mut self, parent: u32) {
+        let mut done: Vec<(u64, crate::filebrowser::Choice)> = Vec::new();
+        self.file_done.retain(|d| {
+            if d.0 == parent {
+                done.push((d.1, d.2.clone()));
+                false
+            } else {
+                true
+            }
+        });
+        let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(0)), move |_, _, st: &mut Runner<A>| {
+            if st.focus_id(parent) {
+                st.w.mem.file_results.extend(std::mem::take(&mut done));
+                st.w.mem.alert_open = false;
+                st.w.dirty = true;
+                st.draw_now();
+            }
+            TimeoutAction::Drop
+        });
+    }
+
+    /// After the frame: opens the Open/Save window the app asked for (or closes it, if it
+    /// stopped asking), tied to this one, which stays still while it is open.
+    fn sync_file_window(&mut self) {
+        if self.w.alert_of.is_some() || self.w.file_of.is_some() {
+            return;
+        }
+        let pid = self.w.id;
+        let want = self.w.mem.file_want;
+        let open = self.others.iter().position(|o| o.file_of.as_ref().is_some_and(|f| f.0 == pid));
+        match (want, open) {
+            (Some(key), None) => {
+                let Some((k, fb)) = self.w.mem.file_new.take() else { return };
+                if k != key {
+                    return;
+                }
+                let opts = WindowOptions { title: fb.window_title(), app_id: self.w.app_id.clone(), size: (640, 440), fixed: false, min_size: Some((480, 320)) };
+                let id = 0x2000_0000 | pid;
+                let mut win = self.shells.open_with(&self.qh, id, &opts, true);
+                win.window.set_parent(Some(&self.w.window));
+                win.window.commit();
+                win.mem.app_icon = self.w.mem.app_icon;
+                win.file_of = Some((pid, key, fb));
+                self.w.mem.alert_open = true;
+                self.others.push(win);
+            }
+            (Some(_), Some(_)) => self.w.mem.alert_open = true,
+            (None, Some(i)) => {
+                drop(self.others.remove(i));
+                self.w.mem.alert_open = false;
+            }
+            (None, None) => {}
         }
     }
 
@@ -1004,21 +1076,34 @@ impl<A: App> Runner<A> {
             }
             self.background(&mut canvas);
             let alert = self.w.alert_of.clone();
+            let mut file = self.w.file_of.take();
+            let mut file_choice = None;
             let (redraw, close) = {
                 let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-                match &alert {
+                match (&alert, file.as_mut()) {
                     // Janela de alerta: o alerta ocupa a janela; a escolha volta para a dona.
-                    Some((parent, req)) => {
+                    (Some((parent, req)), _) => {
                         let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
                         if let Some(i) = ui.alert_window(req.kind, &req.title, &req.text, &b) {
                             self.alert_done.push((*parent, req.key, i));
                             ui.close = true;
                         }
                     }
-                    None => self.app.ui(&mut ui),
+                    // Open/Save window: the browser fills it; the choice goes to the owner.
+                    (None, Some((_, _, fb))) => {
+                        if let Some(c) = ui.file_sheet(fb) {
+                            file_choice = Some(c);
+                            ui.close = true;
+                        }
+                    }
+                    (None, None) => self.app.ui(&mut ui),
                 }
                 ui.finish()
             };
+            if let (Some(c), Some((p, k, _))) = (file_choice, file.as_ref()) {
+                self.file_done.push((*p, *k, c));
+            }
+            self.w.file_of = file;
             // Um clique muda o estado no meio do quadro (ex.: o visor já foi
             // desenhado antes do botão). Mais uma passada, sem eventos, mostra
             // o resultado na hora. Só a última passada vai para a tela.
@@ -1120,21 +1205,34 @@ impl<A: App> Runner<A> {
             canvas.start_record(true);
             self.background(&mut canvas);
             let alert = self.w.alert_of.clone();
+            let mut file = self.w.file_of.take();
+            let mut file_choice = None;
             let (redraw, close) = {
                 let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-                match &alert {
+                match (&alert, file.as_mut()) {
                     // Janela de alerta: o alerta ocupa a janela; a escolha volta para a dona.
-                    Some((parent, req)) => {
+                    (Some((parent, req)), _) => {
                         let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
                         if let Some(i) = ui.alert_window(req.kind, &req.title, &req.text, &b) {
                             self.alert_done.push((*parent, req.key, i));
                             ui.close = true;
                         }
                     }
-                    None => self.app.ui(&mut ui),
+                    // Open/Save window: the browser fills it; the choice goes to the owner.
+                    (None, Some((_, _, fb))) => {
+                        if let Some(c) = ui.file_sheet(fb) {
+                            file_choice = Some(c);
+                            ui.close = true;
+                        }
+                    }
+                    (None, None) => self.app.ui(&mut ui),
                 }
                 ui.finish()
             };
+            if let (Some(c), Some((p, k, _))) = (file_choice, file.as_ref()) {
+                self.file_done.push((*p, *k, c));
+            }
+            self.w.file_of = file;
             ops = canvas.take_record();
             canvas.set_clip(None);
             self.w.canvas = Some(canvas);
@@ -1184,20 +1282,25 @@ impl<A: App> Runner<A> {
             for r in &rects {
                 canvas.set_region(Some(*r));
                 self.background(&mut canvas);
+                let mut file = self.w.file_of.take();
                 let _ = {
                     let mut ui = Ui::new(&mut canvas, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
                     // A janela do alerta só pinta o alerta (o app nunca desenha nela: ele
                     // pintaria a própria tela por cima e mudaria o estado dele com o
                     // tamanho errado).
-                    match &alert {
-                        Some((_, req)) => {
+                    match (&alert, file.as_mut()) {
+                        (Some((_, req)), _) => {
                             let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
                             let _ = ui.alert_window(req.kind, &req.title, &req.text, &b);
                         }
-                        None => self.app.ui(&mut ui),
+                        (None, Some((_, _, fb))) => {
+                            let _ = ui.file_sheet(fb);
+                        }
+                        (None, None) => self.app.ui(&mut ui),
                     }
                     ui.finish()
                 };
+                self.w.file_of = file;
                 canvas.set_clip(None);
                 canvas.set_region(None);
             }
@@ -1261,15 +1364,20 @@ impl<A: App> Runner<A> {
         self.background(&mut full);
         {
             let alert = self.w.alert_of.clone();
+            let mut file = self.w.file_of.take();
             let mut ui = Ui::new(&mut full, &self.theme, &self.fonts, &self.doc_fonts, !self.w.fixed, &self.w.input, &mut self.w.mem);
-            match &alert {
-                Some((_, req)) => {
+            match (&alert, file.as_mut()) {
+                (Some((_, req)), _) => {
                     let b: Vec<&str> = req.buttons.iter().map(String::as_str).collect();
                     let _ = ui.alert_window(req.kind, &req.title, &req.text, &b);
                 }
-                None => self.app.ui(&mut ui),
+                (None, Some((_, _, fb))) => {
+                    let _ = ui.file_sheet(fb);
+                }
+                (None, None) => self.app.ui(&mut ui),
             }
             let _ = ui.finish();
+            self.w.file_of = file;
         }
         self.w.mem.drop_requests();
         let w = canvas.px_width() as usize;
@@ -1410,6 +1518,7 @@ impl<A: App> Runner<A> {
     fn after_frame(&mut self) -> bool {
         let mut resized = false;
         self.sync_alert_window();
+        self.sync_file_window();
         // O cursor que o quadro pediu (só manda quando muda, com o mouse sobre a janela).
         let want = self.w.mem.mouse_cursor;
         if self.w.input.inside && self.cursor_on != Some(want) {
@@ -2130,6 +2239,12 @@ impl<A: App> OutputHandler for Runner<A> {
 impl<A: App> WindowHandler for Runner<A> {
     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, window: &Window) {
         if !self.focus_surface(window.wl_surface()) {
+            return;
+        }
+        // Closing the Open/Save window = Cancel.
+        if let Some((parent, key, _)) = self.w.file_of.as_ref().map(|f| (f.0, f.1, ())) {
+            self.file_done.push((parent, key, crate::filebrowser::Choice::Cancelled));
+            self.close_current();
             return;
         }
         // Fechar a janela do alerta = Cancelar (ou o primeiro botão).

@@ -442,6 +442,12 @@ pub struct Memory {
     pub(crate) alert_native: bool,
     pub(crate) alert_req: Option<AlertReq>,
     pub(crate) alert_results: Vec<(u64, usize)>,
+    /// Open and Save as a window of their own (`file_sheet`, in the Glove): on, the request
+    /// of this frame, the browser for a new window and the choices that came back.
+    pub(crate) file_native: bool,
+    pub(crate) file_want: Option<u64>,
+    pub(crate) file_new: Option<(u64, crate::filebrowser::FileBrowser)>,
+    pub(crate) file_results: Vec<(u64, crate::filebrowser::Choice)>,
     pub(crate) alert_open: bool,
     active: Option<Id>,
     focus: Option<Id>,
@@ -621,7 +627,7 @@ pub struct Ui<'a> {
     /// Janela redimensionável: desenha o puxador no canto inferior direito.
     pub(crate) resizable: bool,
     input: &'a Input,
-    mem: &'a mut Memory,
+    pub(crate) mem: &'a mut Memory,
     stack: Vec<Layout>,
     seed: u64,
     counter: u64,
@@ -683,6 +689,7 @@ impl<'a> Ui<'a> {
         // fica parada (nada responde), como embaixo de uma folha.
         let captured = captured || mem.alert_open;
         mem.alert_req = None;
+        mem.file_want = None;
         mem.mouse_cursor = Cursor::Arrow;
         let mut ui = Self { c, theme, fonts, doc_fonts, resizable, input, mem, stack: Vec::new(), seed: 0, counter: 0, captured, disabled: false, sheet_blocked: false, clip_blocked: false, reserved: false, dimmed: false, redraw: false, close: false, hover_log: Default::default(), ptr_used: Default::default() };
         ui.stack.push(Layout { horizontal: false, x0: 0.0, y0: 0.0, cx: 0.0, cy: 0.0, width: w, used_w: 0.0, used_h: 0.0, spacing: 8.0 });
