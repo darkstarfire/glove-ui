@@ -908,3 +908,12 @@ msgstr "Open in Files"
 
 msgid "A pasta está vazia"
 msgstr "The folder is empty"
+
+msgid "Buscar em {}"
+msgstr "Search in {}"
+
+msgid "Nenhum item com “{}”"
+msgstr "No items with “{}”"
+
+msgid "Mais {} no Arquivos"
+msgstr "{} More in Files"

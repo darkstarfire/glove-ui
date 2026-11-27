@@ -491,6 +491,8 @@ pub struct Memory {
     pub(crate) campo_menu: Option<Id>,
     /// Widget que pediu para colar.
     pub(crate) paste_req: Option<Id>,
+    /// The selection (bytes) the next autofocused field starts with (`text_field_in_selected`).
+    pub(crate) field_select: Option<(usize, usize)>,
     /// Texto colado chegando para um widget.
     pub(crate) paste_in: Option<(Id, String)>,
     /// Novo título da janela.
@@ -2069,11 +2071,31 @@ impl<'a> Ui<'a> {
         if changed {
             *value = buf.text().to_string();
         }
+        if let Some((a, b)) = self.mem.field_select.take().filter(|_| autofocus) {
+            let n = buf.len();
+            let (a, b) = (a.min(n), b.min(n));
+            if buf.text().is_char_boundary(a) && buf.text().is_char_boundary(b) {
+                buf.anchor = a;
+                buf.cursor = b;
+            }
+        }
         moldura(self, focused);
         self.texto_da_linha(id, r, &buf, focused, px);
         self.mem.linhas.insert(id, buf);
         self.mem.linhas_usadas.push(id);
         (changed, enter)
+    }
+
+    /// Como `text_field_in`, mas ao ganhar o cursor (`autofocus`) já vem com `sel`
+    /// selecionado (de verdade: copiar, recortar e digitar agem sobre ele), como o nome
+    /// sem a extensão ao renomear um arquivo.
+    pub fn text_field_in_selected(&mut self, r: Rect, value: &mut String, autofocus: bool, sel: std::ops::Range<usize>) -> (bool, bool) {
+        if autofocus {
+            self.mem.field_select = Some((sel.start, sel.end));
+        }
+        let res = self.text_field_in(r, value, autofocus);
+        self.mem.field_select = None;
+        res
     }
 
     /// Campo de texto num retângulo livre (ex.: renomear no lugar). `autofocus` põe

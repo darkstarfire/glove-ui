@@ -245,13 +245,17 @@ pub struct Dock {
     pub animate_launch: bool,
     /// The Downloads folder as a stack next to the Trash (opens in a grid, like on the Mac).
     pub downloads_stack: bool,
+    /// How the stack opens: "fan" (one over the other in a curve, as in the photo of the
+    /// Mac) or "grid" (a panel that scrolls, with a search field). On a side Dock the
+    /// fan becomes a grid, as on the Mac.
+    pub stack_view: String,
     /// Efeito de minimizar: "scale" ou "genie".
     pub minimize_effect: String,
 }
 
 impl Default for Dock {
     fn default() -> Self {
-        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, smart_hide: true, animate_launch: true, downloads_stack: true, minimize_effect: "scale".into() }
+        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, smart_hide: true, animate_launch: true, downloads_stack: true, stack_view: "fan".into(), minimize_effect: "scale".into() }
     }
 }
 
@@ -1623,6 +1627,10 @@ mod libc_inotify {
 /// Faz o alocador devolver memória ao sistema assim que ela é liberada
 /// (sem isso, o glibc guarda blocos grandes "para depois" e a RAM só cresce).
 pub fn tune_memory() {
+    // Programs with many threads and big buffers (the browser) keep the defaults.
+    if std::env::var_os("GLOVE_DEFAULT_MALLOC").is_some() {
+        return;
+    }
     unsafe {
         // Blocos acima de 64 KB vêm direto do sistema e voltam ao liberar.
         libc::mallopt(libc::M_MMAP_THRESHOLD, 64 * 1024);

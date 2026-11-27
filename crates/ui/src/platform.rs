@@ -941,6 +941,19 @@ impl<A: App> Runner<A> {
         });
     }
 
+    /// Another frame for this window as soon as the loop is free (state that changed
+    /// after the last pass of a frame, outside any event).
+    fn redraw_later(&mut self) {
+        let win = self.w.id;
+        self.w.dirty = true;
+        self.loop_handle.insert_idle(move |st: &mut Runner<A>| {
+            if st.focus_id(win) {
+                st.w.dirty = true;
+                st.draw_now();
+            }
+        });
+    }
+
     fn draw_now(&mut self) {
         self.ensure_tick();
         // Espera o compositor mostrar o quadro anterior: nunca desenha mais
@@ -1021,6 +1034,10 @@ impl<A: App> Runner<A> {
                 return;
             }
             let settled = std::mem::take(&mut self.w.mem.settled);
+            if resized && pass == 2 {
+                // No passes left: what changed after this one is drawn right after.
+                self.redraw_later();
+            }
             if (redraw || (had_events && !settled) || resized) && pass < 2 {
                 // A próxima passada pode mudar qualquer coisa: refaz tudo.
                 partial = false;
@@ -1133,6 +1150,10 @@ impl<A: App> Runner<A> {
             }
             passes = pass + 1;
             let settled = std::mem::take(&mut self.w.mem.settled);
+            if resized && pass == 2 {
+                // No passes left: what changed after this one is drawn right after.
+                self.redraw_later();
+            }
             if (redraw || (had_events && !settled) || resized) && pass < 2 {
                 self.w.dirty = true;
                 continue;
@@ -1496,6 +1517,9 @@ impl<A: App> Runner<A> {
             if let Some(fonts) = Fonts::load_family(&f) {
                 self.doc_fonts = fonts;
                 self.w.dirty = true;
+                // Another pass now: an app that marked the frame settled would otherwise
+                // show the new font only on the next event.
+                resized = true;
             }
         }
         if std::mem::take(&mut self.w.mem.move_req) {
@@ -1543,7 +1567,10 @@ impl<A: App> Runner<A> {
         resized |= self.sync_list_popup();
         if let Some(id) = self.w.mem.paste_req.take() {
             let files = std::mem::take(&mut self.w.mem.paste_files);
-            self.request_paste(id, files);
+            // Our own selection is pasted right away: one more pass shows it in this same
+            // frame (the editor marks its frames settled, and the text would only appear
+            // on the next key).
+            resized |= self.request_paste(id, files);
         }
         resized
     }
@@ -1890,21 +1917,23 @@ impl<A: App> Runner<A> {
     }
 
     /// Lê a área de transferência sem travar (o texto chega por um pipe).
-    /// `files`: prefere a lista de arquivos (text/uri-list) ao texto.
-    fn request_paste(&mut self, id: crate::ui::Id, files: bool) {
+    /// `files`: prefere a lista de arquivos (text/uri-list) ao texto. Devolve verdadeiro
+    /// quando o texto já chegou (a seleção é nossa) e o quadro precisa de outra passada.
+    fn request_paste(&mut self, id: crate::ui::Id, files: bool) -> bool {
         // Se a seleção é nossa, nem precisa ir ao compositor.
         if self.clip_source.is_some() || self.data_device.is_none() {
             if !self.clip_text.is_empty() {
                 self.w.mem.paste_in = Some((id, self.clip_text.clone()));
                 self.w.dirty = true;
+                return true;
             }
-            return;
+            return false;
         }
-        let Some(offer) = self.data_device.as_ref().and_then(|d| d.data().selection_offer()) else { return };
+        let Some(offer) = self.data_device.as_ref().and_then(|d| d.data().selection_offer()) else { return false };
         let file_mimes = [crate::clipfiles::URI_LIST, crate::clipfiles::GNOME_FILES];
         let order: Vec<&str> = if files { file_mimes.iter().chain(TEXT_MIMES.iter()).copied().collect() } else { TEXT_MIMES.to_vec() };
-        let Some(mime) = offer.with_mime_types(|m| order.iter().find(|t| m.iter().any(|x| x == *t)).map(|t| t.to_string())) else { return };
-        let Ok(pipe) = offer.receive(mime) else { return };
+        let Some(mime) = offer.with_mime_types(|m| order.iter().find(|t| m.iter().any(|x| x == *t)).map(|t| t.to_string())) else { return false };
+        let Ok(pipe) = offer.receive(mime) else { return false };
         let mut data = Vec::new();
         let win = self.w.id;
         let _ = self.loop_handle.insert_source(pipe, move |_, f, st: &mut Runner<A>| {
@@ -1930,6 +1959,7 @@ impl<A: App> Runner<A> {
                 }
             }
         });
+        false
     }
 
     /// Manda o quadro para a tela: só as áreas em `damage` são copiadas e

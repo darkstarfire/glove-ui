@@ -3057,8 +3057,9 @@ mod control_tests {
 }
 
 
+
 // ---------------------------------------------------------------------------
-// Pilha do Dock (a pasta Downloads aberta em grade, como no Mac)
+// Pilha do Dock (a pasta Downloads aberta em leque ou em grade, como no Mac)
 // ---------------------------------------------------------------------------
 
 /// Um item da pilha: o ícone do tipo, o nome e, para imagens, a miniatura.
@@ -3072,61 +3073,117 @@ pub struct StackEntry<'a> {
 pub const STACK_SHADOW: f32 = 14.0;
 const STACK_CELL: (f32, f32) = (96.0, 100.0);
 const STACK_PAD: f32 = 14.0;
-const STACK_HEAD: f32 = 34.0;
+/// O título e o campo de busca.
+const STACK_HEAD: f32 = 66.0;
 const STACK_FOOT: f32 = 40.0;
+/// Linhas da grade à vista (o resto rola).
+const STACK_ROWS: usize = 4;
 /// O bico que aponta para o ícone no Dock, embaixo do painel.
 pub const STACK_ARROW: f32 = 12.0;
-/// Quantos itens cabem na grade (os mais novos; o resto, no Arquivos).
-pub const STACK_MAX: usize = 20;
 
 /// Parte da pilha sob o mouse.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackPart {
+    /// O item (o índice na lista mostrada: a filtrada pela busca).
     Item(usize),
-    /// "Abrir no Arquivos".
+    /// "Abrir no Arquivos" (no leque: "Mais N no Arquivos").
     OpenFolder,
+    /// O campo de busca da grade.
+    Search,
 }
 
-/// (colunas, linhas, largura, altura do painel, sem a sombra nem o bico).
-pub fn stack_geom(n: usize) -> (usize, usize, f32, f32) {
-    let n = n.min(STACK_MAX);
-    let cols = n.clamp(3, 5);
-    let rows = n.div_ceil(cols).max(1);
+/// O que a grade mostra além dos itens.
+pub struct StackGridState<'a> {
+    pub title: &'a str,
+    /// Quantos itens a pasta tem (o tamanho do painel não muda com a busca).
+    pub total: usize,
+    pub query: &'a str,
+    /// Rolagem (pontos, do alto).
+    pub scroll: f32,
+    pub hover: Option<StackPart>,
+    pub arrow_x: f32,
+    pub dark: bool,
+}
+
+/// (colunas, linhas à vista, largura, altura do painel, sem a sombra nem o bico), para
+/// uma pasta com `total` itens.
+pub fn stack_geom(total: usize) -> (usize, usize, f32, f32) {
+    let cols = total.clamp(3, 5);
+    let rows = total.div_ceil(cols).clamp(1, STACK_ROWS);
     let w = 2.0 * STACK_PAD + cols as f32 * STACK_CELL.0;
     let h = STACK_HEAD + rows as f32 * STACK_CELL.1 + STACK_FOOT;
     (cols, rows, w, h)
 }
 
-fn stack_cell(n: usize, i: usize) -> (f32, f32) {
-    let (cols, _, _, _) = stack_geom(n);
-    (STACK_PAD + (i % cols) as f32 * STACK_CELL.0, STACK_HEAD + (i / cols) as f32 * STACK_CELL.1)
+/// Quanto a grade rola com `shown` itens à vista (filtrados) numa pasta de `total`.
+pub fn stack_max_scroll(total: usize, shown: usize) -> f32 {
+    let (cols, rows, _, _) = stack_geom(total);
+    (shown.div_ceil(cols) as f32 * STACK_CELL.1 - rows as f32 * STACK_CELL.1).max(0.0)
 }
 
-fn stack_button(n: usize, fonts: &Fonts) -> (f32, f32, f32, f32) {
-    let (_, _, w, h) = stack_geom(n);
+fn stack_cell(total: usize, i: usize, scroll: f32) -> (f32, f32) {
+    let (cols, _, _, _) = stack_geom(total);
+    (STACK_PAD + (i % cols) as f32 * STACK_CELL.0, STACK_HEAD + (i / cols) as f32 * STACK_CELL.1 - scroll)
+}
+
+fn stack_button(total: usize, fonts: &Fonts) -> (f32, f32, f32, f32) {
+    let (_, _, w, h) = stack_geom(total);
     let bw = fonts.measure(tr!("Abrir no Arquivos"), 12.0, false) + 30.0;
     ((w - bw) / 2.0, h - STACK_FOOT + 8.0, bw, 24.0)
 }
 
-/// O que está sob o ponto (relativo ao canto do painel).
-pub fn stack_hit(fonts: &Fonts, n: usize, x: f32, y: f32) -> Option<StackPart> {
-    let (bx, by, bw, bh) = stack_button(n, fonts);
-    if x >= bx && x < bx + bw && y >= by && y < by + bh {
-        return Some(StackPart::OpenFolder);
-    }
-    (0..n.min(STACK_MAX)).find(|&i| {
-        let (cx, cy) = stack_cell(n, i);
-        x >= cx + 2.0 && x < cx + STACK_CELL.0 - 2.0 && y >= cy && y < cy + STACK_CELL.1 - 2.0
-    }).map(StackPart::Item)
+fn stack_search(total: usize) -> (f32, f32, f32, f32) {
+    let (_, _, w, _) = stack_geom(total);
+    (STACK_PAD, 32.0, w - 2.0 * STACK_PAD, 24.0)
 }
 
-/// O painel da pilha: o título, a grade (o ícone ou a miniatura e o nome em até duas
-/// linhas), "Abrir no Arquivos" e o bico em `arrow_x` (relativo ao painel), apontando
-/// para baixo, para o ícone no Dock. A textura inclui a sombra (`STACK_SHADOW` de
-/// cada lado) e o bico embaixo.
-pub fn stack_grid(fonts: &Fonts, title: &str, items: &[StackEntry], hover: Option<StackPart>, arrow_x: f32, dark: bool, scale: f32) -> Option<Canvas> {
-    let n = items.len().min(STACK_MAX);
-    let (_, _, w, h) = stack_geom(n);
+/// O que está sob o ponto (relativo ao canto do painel) na grade com `shown` itens.
+pub fn stack_hit(fonts: &Fonts, total: usize, shown: usize, scroll: f32, x: f32, y: f32) -> Option<StackPart> {
+    let inside = |(bx, by, bw, bh): (f32, f32, f32, f32)| x >= bx && x < bx + bw && y >= by && y < by + bh;
+    if inside(stack_button(total, fonts)) {
+        return Some(StackPart::OpenFolder);
+    }
+    if inside(stack_search(total)) {
+        return Some(StackPart::Search);
+    }
+    let (_, rows, _, _) = stack_geom(total);
+    if y < STACK_HEAD || y >= STACK_HEAD + rows as f32 * STACK_CELL.1 {
+        return None;
+    }
+    (0..shown)
+        .find(|&i| {
+            let (cx, cy) = stack_cell(total, i, scroll);
+            x >= cx + 2.0 && x < cx + STACK_CELL.0 - 2.0 && y >= cy && y < cy + STACK_CELL.1 - 2.0
+        })
+        .map(StackPart::Item)
+}
+
+/// O ícone de um item (ou a miniatura, com borda branca e sombra leve, como no Mac)
+/// num quadrado de lado `s`.
+fn stack_icon(c: &mut Canvas, fonts: &Fonts, it: &StackEntry, ix: f32, iy: f32, s: f32) {
+    match it.thumb {
+        Some(img) if img.width() > 0 && img.height() > 0 => {
+            let k = s / img.width().max(img.height()) as f32;
+            let (dw, dh) = (img.width() as f32 * k, img.height() as f32 * k);
+            let (px, py) = (ix + (s - dw) / 2.0, iy + (s - dh) / 2.0);
+            c.fill(rrect(px - 2.0, py - 1.0, dw + 4.0, dh + 4.0, 2.0), &solid(rgba(0, 0, 0, 40)));
+            c.fill(rrect(px - 2.0, py - 2.0, dw + 4.0, dh + 4.0, 2.0), &solid(rgba(255, 255, 255, 255)));
+            let kk = k * c.scale;
+            let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bicubic, ..Default::default() };
+            c.draw_pixmap_t(img.as_ref(), &paint, tiny_skia::Transform::from_row(kk, 0.0, 0.0, kk, (px * c.scale).round(), (py * c.scale).round()));
+        }
+        _ => icons::draw(c, fonts, it.icon, ix, iy, s, None),
+    }
+}
+
+/// O painel da grade: o título, o campo de busca, os itens (o ícone ou a miniatura e o
+/// nome em até duas linhas), rolando dentro de `STACK_ROWS` linhas, a barra de rolagem,
+/// "Abrir no Arquivos" e o bico em `arrow_x` (relativo ao painel), apontando para baixo,
+/// para o ícone no Dock. A textura inclui a sombra (`STACK_SHADOW` de cada lado) e o
+/// bico embaixo.
+pub fn stack_grid(fonts: &Fonts, st: &StackGridState, items: &[StackEntry], scale: f32) -> Option<Canvas> {
+    let (cols, rows, w, h) = stack_geom(st.total);
+    let dark = st.dark;
     let m = STACK_SHADOW;
     let mut c = Canvas::new(w + 2.0 * m, h + STACK_ARROW + 2.0 * m, scale)?;
     let (bg, line, text, dim) = if dark {
@@ -3135,7 +3192,7 @@ pub fn stack_grid(fonts: &Fonts, title: &str, items: &[StackEntry], hover: Optio
         (rgba(242, 242, 244, 240), rgba(0, 0, 0, 46), Color::from_rgba8(28, 28, 30, 255), Color::from_rgba8(110, 110, 116, 255))
     };
     // O contorno: o painel arredondado com o bico embaixo.
-    let ax = (m + arrow_x).clamp(m + 18.0, m + w - 18.0);
+    let ax = (m + st.arrow_x).clamp(m + 18.0, m + w - 18.0);
     let shape = |dx: f32, dy: f32, grow: f32| {
         let (x0, y0, x1, y1, r) = (m - grow + dx, m - grow + dy, m + w + grow + dx, m + h + grow + dy, 12.0 + grow);
         let mut pb = tiny_skia::PathBuilder::new();
@@ -3160,35 +3217,54 @@ pub fn stack_grid(fonts: &Fonts, title: &str, items: &[StackEntry], hover: Optio
     c.fill(shape(0.0, 0.0, 0.0), &solid(bg));
     c.stroke(shape(0.0, 0.0, 0.0), &solid(line), 1.0);
     // Título.
-    let tw = fonts.measure(title, 13.0, true);
-    fonts.draw(&mut c, title, (m + (w - tw) / 2.0).round(), m + 22.0, 13.0, true, text);
-    if n == 0 {
-        let e = tr!("A pasta está vazia");
-        let ew = fonts.measure(e, 12.0, false);
-        fonts.draw(&mut c, e, (m + (w - ew) / 2.0).round(), m + STACK_HEAD + STACK_CELL.1 / 2.0, 12.0, false, dim);
+    let tw = fonts.measure(st.title, 13.0, true);
+    fonts.draw(&mut c, st.title, (m + (w - tw) / 2.0).round(), m + 22.0, 13.0, true, text);
+    // O campo de busca (o teclado já é dele enquanto a pilha está aberta).
+    let (sx, sy, sw, sh) = stack_search(st.total);
+    c.fill(rrect(m + sx, m + sy, sw, sh, sh / 2.0), &solid(if dark { rgba(255, 255, 255, 26) } else { rgba(0, 0, 0, 16) }));
+    if st.hover == Some(StackPart::Search) || !st.query.is_empty() {
+        c.stroke(rrect(m + sx + 0.5, m + sy + 0.5, sw - 1.0, sh - 1.0, sh / 2.0), &solid(if dark { rgba(255, 255, 255, 50) } else { rgba(0, 0, 0, 40) }), 1.0);
     }
-    for (i, it) in items.iter().take(n).enumerate() {
-        let (cx, cy) = stack_cell(n, i);
+    // A lupa.
+    let (lx, ly) = (m + sx + 14.0, m + sy + sh / 2.0 - 1.0);
+    let lupa = |pb: &mut tiny_skia::PathBuilder| {
+        pb.push_circle(lx, ly, 4.5);
+        pb.move_to(lx + 3.3, ly + 3.3);
+        pb.line_to(lx + 7.0, ly + 7.0);
+    };
+    let mut pb = tiny_skia::PathBuilder::new();
+    lupa(&mut pb);
+    c.stroke(pb.finish(), &solid(dim), 1.5);
+    let tx = m + sx + 28.0;
+    if st.query.is_empty() {
+        fonts.draw(&mut c, tr!("Buscar em {}", st.title).as_str(), tx, m + sy + 16.5, 12.0, false, dim);
+    } else {
+        let q = fonts.ellipsize(st.query, 12.0, false, sw - 44.0);
+        fonts.draw(&mut c, &q, tx, m + sy + 16.5, 12.0, false, text);
+        let qw = fonts.measure(&q, 12.0, false);
+        c.fill_rect(tx + qw + 1.0, m + sy + 5.0, 1.5, sh - 10.0, &solid(rgba(40, 110, 230, 255)));
+    }
+    // Os itens, rolando dentro da área deles.
+    let top = m + STACK_HEAD;
+    let view_h = rows as f32 * STACK_CELL.1;
+    if items.is_empty() {
+        let e = if st.query.is_empty() { tr!("A pasta está vazia").to_string() } else { tr!("Nenhum item com “{}”", st.query) };
+        let ew = fonts.measure(&e, 12.0, false).min(w - 20.0);
+        let e = fonts.ellipsize(&e, 12.0, false, w - 20.0);
+        fonts.draw(&mut c, &e, (m + (w - ew) / 2.0).round(), top + STACK_CELL.1 / 2.0, 12.0, false, dim);
+    }
+    let k = c.scale;
+    c.set_clip(Some([((m) * k).floor() as i32, (top * k).floor() as i32, ((m + w) * k).ceil() as i32, ((top + view_h) * k).ceil() as i32]));
+    let first = (st.scroll / STACK_CELL.1).floor().max(0.0) as usize * cols;
+    let last = (((st.scroll + view_h) / STACK_CELL.1).ceil() as usize + 1) * cols;
+    for (i, it) in items.iter().enumerate().take(last.min(items.len())).skip(first) {
+        let (cx, cy) = stack_cell(st.total, i, st.scroll);
         let (cx, cy) = (cx + m, cy + m);
-        if hover == Some(StackPart::Item(i)) {
+        if st.hover == Some(StackPart::Item(i)) {
             c.fill(rrect(cx + 3.0, cy, STACK_CELL.0 - 6.0, STACK_CELL.1 - 4.0, 8.0), &solid(if dark { rgba(255, 255, 255, 34) } else { rgba(0, 0, 0, 26) }));
         }
         let s = 56.0;
-        let (ix, iy) = (cx + (STACK_CELL.0 - s) / 2.0, cy + 6.0);
-        match it.thumb {
-            Some(img) if img.width() > 0 && img.height() > 0 => {
-                // A miniatura, com borda branca e uma sombra leve (como no Mac).
-                let k = s / img.width().max(img.height()) as f32;
-                let (dw, dh) = (img.width() as f32 * k, img.height() as f32 * k);
-                let (px, py) = (ix + (s - dw) / 2.0, iy + (s - dh) / 2.0);
-                c.fill(rrect(px - 2.0, py - 1.0, dw + 4.0, dh + 4.0, 2.0), &solid(rgba(0, 0, 0, 40)));
-                c.fill(rrect(px - 2.0, py - 2.0, dw + 4.0, dh + 4.0, 2.0), &solid(rgba(255, 255, 255, 255)));
-                let kk = k * c.scale;
-                let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bicubic, ..Default::default() };
-                c.draw_pixmap_t(img.as_ref(), &paint, tiny_skia::Transform::from_row(kk, 0.0, 0.0, kk, (px * c.scale).round(), (py * c.scale).round()));
-            }
-            _ => icons::draw(&mut c, fonts, it.icon, ix, iy, s, None),
-        }
+        stack_icon(&mut c, fonts, it, cx + (STACK_CELL.0 - s) / 2.0, cy + 6.0, s);
         let lines = wrap_two_lines(fonts, &it.name, 11.0, false, STACK_CELL.0 - 10.0);
         for (k, l) in lines.iter().take(2).enumerate() {
             let l = fonts.ellipsize(l, 11.0, false, STACK_CELL.0 - 10.0);
@@ -3196,9 +3272,17 @@ pub fn stack_grid(fonts: &Fonts, title: &str, items: &[StackEntry], hover: Optio
             fonts.draw(&mut c, &l, (cx + (STACK_CELL.0 - lw) / 2.0).round(), cy + 76.0 + k as f32 * 13.0, 11.0, false, text);
         }
     }
+    c.set_clip(None);
+    // A barra de rolagem (quando há mais do que cabe).
+    let content_h = items.len().div_ceil(cols) as f32 * STACK_CELL.1;
+    if content_h > view_h + 0.5 {
+        let bh = (view_h * view_h / content_h).max(24.0);
+        let by = top + (view_h - bh) * (st.scroll / (content_h - view_h)).clamp(0.0, 1.0);
+        c.fill(rrect(m + w - 8.0, by + 2.0, 5.0, bh - 4.0, 2.5), &solid(if dark { rgba(255, 255, 255, 90) } else { rgba(0, 0, 0, 80) }));
+    }
     // "Abrir no Arquivos".
-    let (bx, by, bw, bh) = stack_button(n, fonts);
-    let on = hover == Some(StackPart::OpenFolder);
+    let (bx, by, bw, bh) = stack_button(st.total, fonts);
+    let on = st.hover == Some(StackPart::OpenFolder);
     c.fill(rrect(m + bx, m + by, bw, bh, bh / 2.0), &solid(match (dark, on) {
         (true, true) => rgba(255, 255, 255, 60),
         (true, false) => rgba(255, 255, 255, 30),
@@ -3208,5 +3292,138 @@ pub fn stack_grid(fonts: &Fonts, title: &str, items: &[StackEntry], hover: Optio
     let bt = tr!("Abrir no Arquivos");
     let btw = fonts.measure(bt, 12.0, false);
     fonts.draw(&mut c, bt, (m + bx + (bw - btw) / 2.0).round(), m + by + 16.5, 12.0, false, text);
+    Some(c)
+}
+
+// --- O leque -----------------------------------------------------------------
+
+const FAN_ICON: f32 = 48.0;
+const FAN_STEP: f32 = 54.0;
+/// Largura máxima do nome (a etiqueta à esquerda do ícone).
+const FAN_LABEL: f32 = 230.0;
+/// Quantos itens o leque mostra de cada vez (o resto rola, ou fica no Arquivos).
+pub const FAN_MAX: usize = 12;
+
+/// O quanto o leque se curva (sem nada no caminho; perto da borda da tela, menos).
+pub const FAN_BEND: f32 = 1.25;
+
+/// Quanto o leque se curva para a direita na posição `s` (0 = junto do Dock).
+fn fan_dx(s: f32, bend: f32) -> f32 {
+    bend * s.max(0.0).powf(2.0)
+}
+
+/// A curva que cabe em `room` pontos à direita do ícone de baixo.
+pub fn fan_bend_for(slots: usize, room: f32) -> f32 {
+    let s = slots.max(1) as f32;
+    ((room - FAN_ICON / 2.0 - 10.0) / (s * s)).clamp(0.0, FAN_BEND)
+}
+
+/// Quantos lugares o leque tem para `total` itens com `room` pontos de altura acima do
+/// Dock.
+pub fn fan_slots(total: usize, room: f32) -> usize {
+    let cabem = ((room - 20.0) / FAN_STEP).floor() as isize - 1;
+    total.min(FAN_MAX).min(cabem.max(1) as usize)
+}
+
+/// (largura, altura do leque sem a sombra, x do meio do ícone de baixo): o leque cresce
+/// para cima a partir do ícone no Dock, com os nomes à esquerda.
+pub fn fan_geom(slots: usize, bend: f32) -> (f32, f32, f32) {
+    let w = FAN_LABEL + 6.0 + FAN_ICON + fan_dx(slots as f32, bend) + 6.0;
+    let h = (slots + 1) as f32 * FAN_STEP;
+    (w, h, FAN_LABEL + 6.0 + FAN_ICON / 2.0)
+}
+
+/// O canto do ícone que está na posição `s` (relativo ao painel do leque de `slots`).
+fn fan_pos(slots: usize, bend: f32, s: f32) -> (f32, f32) {
+    let (_, h, _) = fan_geom(slots, bend);
+    (FAN_LABEL + 6.0 + fan_dx(s, bend), h - (s + 1.0) * FAN_STEP + (FAN_STEP - FAN_ICON) / 2.0)
+}
+
+fn fan_label(fonts: &Fonts, name: &str) -> (String, f32) {
+    let t = fonts.ellipsize(name, 12.0, false, FAN_LABEL - 18.0);
+    let w = fonts.measure(&t, 12.0, false) + 18.0;
+    (t, w)
+}
+
+/// O que está sob o ponto no leque. `off`: o primeiro item à vista (com fração, durante a
+/// rolagem); `t`: o quanto o leque já abriu (0 a 1).
+pub fn fan_hit(fonts: &Fonts, names: &[String], slots: usize, bend: f32, off: f32, x: f32, y: f32) -> Option<StackPart> {
+    let dentro = |s: f32, lw: f32| {
+        let (ix, iy) = fan_pos(slots, bend, s);
+        let (x0, x1) = (ix - 6.0 - lw, ix + FAN_ICON);
+        x >= x0 && x < x1 && y >= iy - 3.0 && y < iy + FAN_ICON + 3.0
+    };
+    // "Mais no Arquivos", no alto.
+    let topo = tr!("Abrir no Arquivos");
+    if dentro(slots as f32, fonts.measure(topo, 12.0, false) + 18.0) {
+        return Some(StackPart::OpenFolder);
+    }
+    let first = off.floor().max(0.0) as usize;
+    (first..names.len().min(first + slots + 1)).find(|&i| {
+        let s = i as f32 - off;
+        (-0.5..slots as f32 - 0.5).contains(&s) && dentro(s, fan_label(fonts, &names[i]).1)
+    }).map(StackPart::Item)
+}
+
+/// O leque: os itens um sobre o outro, do Dock para cima, numa curva leve para a
+/// direita, cada um com o nome numa etiqueta escura à esquerda (azul sob o mouse), e
+/// no alto "Abrir no Arquivos" (ou "Mais N no Arquivos"). `off` é o primeiro item à
+/// vista, com fração enquanto rola (os itens deslizam pela curva e somem nas pontas);
+/// `t` (0 a 1) abre o leque a partir do ícone. A textura tem a sombra em volta.
+pub fn stack_fan(fonts: &Fonts, items: &[StackEntry], slots: usize, bend: f32, off: f32, t: f32, hover: Option<StackPart>, scale: f32) -> Option<Canvas> {
+    let (w, h, _) = fan_geom(slots, bend);
+    let m = STACK_SHADOW;
+    let mut c = Canvas::new(w + 2.0 * m, h + 2.0 * m, scale)?;
+    let t = t.clamp(0.0, 1.0);
+    let ease = 1.0 - (1.0 - t).powi(3);
+    // Um item na posição `s`, com a transparência `a` (desenhado à parte e posto com ela).
+    let um = |c: &mut Canvas, s: f32, a: f32, label: &str, icon: &dyn Fn(&mut Canvas, f32, f32), on: bool| {
+        let s = s * ease;
+        let a = a * t.min(1.0);
+        if a <= 0.01 {
+            return;
+        }
+        let (ix, iy) = fan_pos(slots, bend, s);
+        let (t_lbl, lw) = fan_label(fonts, label);
+        let mut it = match Canvas::new(w + 2.0 * m, FAN_ICON + 12.0, c.scale) {
+            Some(x) => x,
+            None => return,
+        };
+        let y0 = iy - 6.0;
+        let (lx, ly) = (m + ix - 6.0 - lw, 6.0 + (FAN_ICON - 20.0) / 2.0);
+        // A etiqueta: escura e translúcida (azul sob o mouse), com uma sombra leve.
+        it.fill(rrect(lx, ly + 1.0, lw, 20.0, 10.0), &solid(rgba(0, 0, 0, 50)));
+        it.fill(rrect(lx, ly, lw, 20.0, 10.0), &solid(if on { rgba(38, 112, 232, 240) } else { rgba(32, 32, 34, 205) }));
+        fonts.draw(&mut it, &t_lbl, lx + 9.0, ly + 14.5, 12.0, false, Color::WHITE);
+        icon(&mut it, m + ix, 6.0);
+        let k = c.scale;
+        let paint = tiny_skia::PixmapPaint { opacity: a, quality: tiny_skia::FilterQuality::Nearest, ..Default::default() };
+        c.draw_pixmap_t(it.pm.as_ref(), &paint, tiny_skia::Transform::from_translate(0.0, ((m + y0) * k).round()));
+    };
+    let first = off.floor().max(0.0) as usize;
+    for i in first..items.len().min(first + slots + 1) {
+        let s = i as f32 - off;
+        // Some nas pontas enquanto desliza.
+        let a = (s + 0.5).min(slots as f32 - 0.5 - s).clamp(0.0, 0.5) * 2.0;
+        let it = &items[i];
+        um(&mut c, s, a, &it.name, &|c: &mut Canvas, x: f32, y: f32| stack_icon(c, fonts, it, x, y, FAN_ICON), hover == Some(StackPart::Item(i)));
+    }
+    // No alto: abre a pasta no Arquivos (com quantos itens ficaram de fora).
+    let fora = items.len().saturating_sub(slots);
+    let topo = if fora > 0 { tr!("Mais {} no Arquivos", fora) } else { tr!("Abrir no Arquivos").to_string() };
+    um(&mut c, slots as f32, 1.0, &topo, &|c: &mut Canvas, x: f32, y: f32| {
+        // Um círculo com a seta, como no Mac.
+        let (cx, cy, r) = (x + FAN_ICON / 2.0, y + FAN_ICON / 2.0, FAN_ICON * 0.36);
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.push_circle(cx, cy, r);
+        c.fill(pb.finish(), &solid(rgba(32, 32, 34, 205)));
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(cx - 5.0, cy + 5.0);
+        pb.line_to(cx + 5.0, cy - 5.0);
+        pb.move_to(cx - 2.0, cy - 5.0);
+        pb.line_to(cx + 5.0, cy - 5.0);
+        pb.line_to(cx + 5.0, cy + 2.0);
+        c.stroke(pb.finish(), &solid(rgba(255, 255, 255, 255)), 2.0);
+    }, hover == Some(StackPart::OpenFolder));
     Some(c)
 }
