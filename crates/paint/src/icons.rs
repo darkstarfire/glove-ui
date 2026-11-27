@@ -578,7 +578,19 @@ fn mide_tile(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: f32)
             let d = s * 0.84;
             draw_raw(&mut inner, fonts, icon, (s - d) / 2.0, (s - d) / 2.0, d, None);
         }
-        _ => draw_raw(&mut inner, fonts, icon, o, o, big, None),
+        Icon::Files => draw_raw(&mut inner, fonts, icon, o, o, big, None),
+        // The page of the calendar on a white tile.
+        Icon::Calendar => {
+            inner.fill_rect(0.0, 0.0, s, s, &solid(rgba(255, 255, 255, 255)));
+            let d = s * 0.86;
+            draw_raw(&mut inner, fonts, icon, (s - d) / 2.0, (s - d) / 2.0, d, None);
+        }
+        // Any other app: its drawing on a light tile.
+        _ => {
+            inner.fill_rect(0.0, 0.0, s, s, &vgrad(0.0, s, &[(0.0, rgba(250, 250, 252, 255)), (1.0, rgba(218, 222, 230, 255))]));
+            let d = s * 0.78;
+            draw_raw(&mut inner, fonts, icon, (s - d) / 2.0, (s - d) / 2.0, d, None);
+        }
     }
     if let Some(shape) = rrect(m, m, s - 2.0 * m, s - 2.0 * m, r) {
         mask.fill_path(&shape, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::from_scale(k, k));
@@ -633,6 +645,12 @@ pub fn draw_bare(pm: &mut Canvas, fonts: &Fonts, icon: Icon, x: f32, y: f32, s: 
                     return;
                 }
             }
+        }
+        // In the Mide theme, an app of Glove the theme has no picture for: the drawing of
+        // Glove in the shape of the Mide icons (not left as the only different one).
+        if chosen.starts_with("mide") && s >= 8.0 && is_app_icon(icon) {
+            mide_tile(pm, fonts, icon, x, y, s);
+            return;
         }
     }
     // Os ícones novos são detalhados: desenhados uma vez por tamanho e reaproveitados.
@@ -1421,6 +1439,15 @@ pub fn mount_icon(dev: &str, path: &std::path::Path) -> Icon {
     }
 }
 
+/// An icon of an app of Glove (the "apps" of the theme), not a place or a file.
+fn is_app_icon(icon: Icon) -> bool {
+    let icon = match icon {
+        Icon::Clock(..) => Icon::Clock(10, 9),
+        i => i,
+    };
+    icon != Icon::Window && theme_entries().iter().any(|(i, ctx, _)| *ctx == "apps" && *i == icon)
+}
+
 /// Ícones do tema "Glove" (freedesktop): (ícone, contexto, nomes). O primeiro
 /// nome é o arquivo; os outros viram atalhos para ele (nomes comuns dos apps
 /// e dos temas GNOME, para os apps de fora também usarem os desenhos).
@@ -1536,14 +1563,14 @@ mod mide_probe {
     #[ignore]
     fn mide_lado_a_lado() {
         let Some(fonts) = Fonts::load_system() else { return };
-        let mut c = Canvas::new(10.0 * 136.0, 150.0, 1.0).unwrap();
-        c.fill_rect(0.0, 0.0, 10.0 * 136.0, 150.0, &solid(rgba(200, 200, 210, 255)));
+        let mut c = Canvas::new(12.0 * 136.0, 150.0, 1.0).unwrap();
+        c.fill_rect(0.0, 0.0, 12.0 * 136.0, 150.0, &solid(rgba(200, 200, 210, 255)));
         for (i, n) in ["mide-files", "mide-terminal", "mide-web-browser", "view-app-grid", "mide-calculator"].iter().enumerate() {
             if let Some(img) = crate::sysicons::image_full("mide", n, 128) {
                 c.draw_pixmap_t(img.as_ref().as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::from_translate(10.0 + i as f32 * 136.0, 10.0));
             }
         }
-        for (i, ic) in [Icon::Files, Icon::AppsGrid, Icon::Jangada, Icon::Search, Icon::Clock(10, 9)].iter().enumerate() {
+        for (i, ic) in [Icon::Files, Icon::AppsGrid, Icon::Jangada, Icon::Search, Icon::Clock(10, 9), Icon::Calendar, Icon::Chess].iter().enumerate() {
             mide_tile(&mut c, &fonts, *ic, 10.0 + (5 + i) as f32 * 136.0, 10.0, 128.0);
         }
         if let Ok(dir) = std::env::var("GLOVE_TEST_PNG") {

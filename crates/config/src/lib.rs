@@ -238,6 +238,9 @@ pub struct Dock {
     pub position: String,
     /// Some e reaparece quando o mouse encosta na borda.
     pub autohide: bool,
+    /// With autohide: it only hides when a window takes its place (dragged there,
+    /// maximized, full screen); with no window there, it stays in view ("intellihide").
+    pub smart_hide: bool,
     /// Ícone pula enquanto o app abre.
     pub animate_launch: bool,
     /// Efeito de minimizar: "scale" ou "genie".
@@ -246,7 +249,7 @@ pub struct Dock {
 
 impl Default for Dock {
     fn default() -> Self {
-        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, animate_launch: true, minimize_effect: "scale".into() }
+        Self { size: 56, magnification: true, max_size: 80, position: "bottom".into(), autohide: false, smart_hide: true, animate_launch: true, minimize_effect: "scale".into() }
     }
 }
 
